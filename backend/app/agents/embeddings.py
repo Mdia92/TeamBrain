@@ -1,4 +1,4 @@
-"""Text embeddings — Gemini with hash fallback for offline/tests."""
+"""Text embeddings — Gemini 2.5 with hash fallback for offline/tests."""
 
 from __future__ import annotations
 
@@ -8,15 +8,15 @@ import struct
 import httpx
 import structlog
 
+from app.agents.llm_client import GEMINI_EMBED_MODEL
 from app.config import settings
 
-log = structlog.get_logger("coord.embeddings")
+log = structlog.get_logger("teambrain.embeddings")
 
 EMBED_DIM = 384
 
 
 def _hash_embedding(text: str, dim: int = EMBED_DIM) -> list[float]:
-    """Deterministic pseudo-embedding when no API key (tests / fallback)."""
     digest = hashlib.sha256(text.encode()).digest()
     values: list[float] = []
     while len(values) < dim:
@@ -34,9 +34,9 @@ async def _gemini_embedding(text: str) -> list[float] | None:
         return None
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"text-embedding-004:embedContent?key={settings.gemini_api_key}"
+        f"{GEMINI_EMBED_MODEL}:embedContent?key={settings.gemini_api_key}"
     )
-    body = {"model": "models/text-embedding-004", "content": {"parts": [{"text": text[:8000]}]}}
+    body = {"model": f"models/{GEMINI_EMBED_MODEL}", "content": {"parts": [{"text": text[:8000]}]}}
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             r = await client.post(url, json=body)
@@ -54,7 +54,6 @@ async def _gemini_embedding(text: str) -> list[float] | None:
 
 
 async def embed_text(text: str) -> tuple[list[float], str]:
-    """Returns (vector, provider). Never raises."""
     gemini = await _gemini_embedding(text)
     if gemini:
         return gemini, "gemini"

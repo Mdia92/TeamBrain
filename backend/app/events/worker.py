@@ -139,3 +139,43 @@ async def run_event_checks(session: AsyncSession, *, include_weekly: bool = Fals
         "commitment_reminders_sent": reminders,
         "field_report_gap_alerts": gaps,
     }
+
+
+async def trigger_on_task_change(session: AsyncSession, org_id: str) -> int:
+    """Immediate overdue check for one org after task status change."""
+    brain = MemoryService(session)
+    rows = (
+        await session.execute(
+            text(
+                "SELECT t.id, t.title, t.organization_id, u.full_name, u.email"
+                " FROM tasks t"
+                " JOIN users u ON u.id = t.assignee_id"
+                " WHERE t.organization_id = CAST(:oid AS uuid)"
+                " AND t.status != 'done'"
+                " AND t.due_date < CURRENT_DATE - INTERVAL '2 days'"
+            ).bindparams(oid=org_id),
+        )
+    ).mappings().all()
+    count = 0
+    for row in rows:
+        msg = f"Rappel: la tâche « {row['title']} » est en retard."
+        if row.get("email"):
+            whatsapp_client.send_message(row["email"], msg)
+        await brain.write_memory(
+            org_id=org_id,
+            type="episodic",
+            entity_type="task",
+            entity_id=str(row["id"]),
+            note=f"Overdue task reminder sent: {row['title']} to {row['full_name']}",
+            source_module="events",
+            source_id=str(row["id"]),
+        )
+        count += 1
+    if count:
+        await session.commit()
+    return count
+
+
+async def trigger_on_meeting_processed(session: AsyncSession, org_id: str) -> int:
+    """Immediate commitment reminders after meeting processing."""
+    return await job_commitment_reminders(session)

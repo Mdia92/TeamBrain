@@ -24,6 +24,7 @@ type AuthContextValue = {
     organization_name: string;
   }) => Promise<User>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<User | null>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -36,6 +37,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setAccessToken = useCallback((token: string | null) => {
     accessTokenRef.current = token;
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const profile = await authApi.me();
+      setUser(profile);
+      return profile;
+    } catch {
+      return null;
+    }
   }, []);
 
   const logout = useCallback(async () => {
@@ -84,15 +95,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const params = new URLSearchParams(window.location.search);
-        const urlToken = params.get("token");
-        if (urlToken) {
-          accessTokenRef.current = urlToken;
-          const profile = await authApi.me(urlToken);
-          if (!cancelled) setUser(profile);
-          setIsLoading(false);
-          return;
-        }
         const refreshed = await authApi.refresh();
         if (!refreshed) return;
         accessTokenRef.current = refreshed.access_token;
@@ -114,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setAccessToken]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

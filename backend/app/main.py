@@ -1,6 +1,9 @@
 """TeamBrain FastAPI application."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.api import (
     assistant,
@@ -12,7 +15,9 @@ from app.api import (
     events,
     field_reports,
     health,
+    invites,
     meetings,
+    members,
     messages,
     projects,
     sync,
@@ -25,13 +30,25 @@ from app.middleware.cors import add_cors
 from app.middleware.logging import RequestLoggingMiddleware, configure_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.rate_limit import limiter
+from app.scheduler import start_scheduler, stop_scheduler
+from app.startup import ensure_pgvector
 
 configure_logging()
 
-app = FastAPI(title="TeamBrain API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await ensure_pgvector()
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="TeamBrain API", version="0.2.0", lifespan=lifespan)
 app.state.limiter = limiter
 install_error_handlers(app)
 
+app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -52,8 +69,10 @@ app.include_router(whatsapp.router)
 app.include_router(assistant.router)
 app.include_router(sync.router)
 app.include_router(events.router)
+app.include_router(members.router)
+app.include_router(invites.router)
 
 
 @app.get("/")
 async def root() -> dict:
-    return {"name": "TeamBrain", "status": "ok"}
+    return {"name": "TeamBrain", "status": "ok", "version": "0.2.0"}

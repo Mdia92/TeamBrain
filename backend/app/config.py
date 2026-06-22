@@ -23,13 +23,12 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     app_db_role: str = "coord_app"
 
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3010"
     csp_extra_connect_src: str = ""
-    frontend_url: str = "http://localhost:3000"
-
+    frontend_url: str = "http://localhost:3010"
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""
-    google_oauth_redirect_uri: str = "http://localhost:8000/api/auth/google/callback"
+    google_oauth_redirect_uri: str = "http://localhost:8010/api/auth/google/callback"
 
     gemini_api_key: str = ""
     groq_api_key: str = ""

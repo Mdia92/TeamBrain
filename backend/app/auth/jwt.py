@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 
+JWT_ISSUER = "teambrain-api"
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -29,6 +31,7 @@ def create_access_token(user_id, organization_id, role: str) -> str:
         "org": str(organization_id),
         "role": role,
         "type": "access",
+        "iss": JWT_ISSUER,
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),
     }
@@ -42,6 +45,7 @@ async def create_refresh_token(session: AsyncSession, user_id, ip: str | None = 
         "sub": str(user_id),
         "type": "refresh",
         "jti": str(uuid.uuid4()),
+        "iss": JWT_ISSUER,
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),
     }
@@ -58,7 +62,14 @@ async def create_refresh_token(session: AsyncSession, user_id, ip: str | None = 
 
 def decode_token(token: str) -> dict | None:
     try:
-        return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            issuer=JWT_ISSUER,
+            options={"require": ["exp", "iss", "sub"]},
+        )
+        return payload
     except JWTError:
         return None
 

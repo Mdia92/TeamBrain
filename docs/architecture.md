@@ -109,4 +109,5 @@ Tasks created by AI show badges in Kanban (`source`: `meeting_ai` | `whatsapp` |
 
 - Backend: Railway (`backend/`, Procfile)
 - Frontend: Vercel (`frontend/`)
-- DB: Supabase transaction pooler port 6543
+- DB: Supabase session pooler (IPv4) or direct connection — see [local-dev.md](local-dev.md)
+- Local dev: frontend `:3010`, API `:8010`

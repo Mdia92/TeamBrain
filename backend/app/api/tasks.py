@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
+from app.events.worker import trigger_on_task_change
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -132,6 +133,7 @@ async def update_task_status(
         )
 
     await session.commit()
+    await trigger_on_task_change(session, str(user["organization_id"]))
     return {"id": task_id, "status": body.status}
 
 

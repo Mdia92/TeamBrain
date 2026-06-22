@@ -28,7 +28,32 @@ from app.rate_limit import limiter
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 REFRESH_COOKIE = "refresh_token"
+ACCESS_COOKIE = "tb_access"
 COOKIE_PATH = "/api/auth"
+
+
+def _set_access_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        ACCESS_COOKIE,
+        token,
+        max_age=settings.access_token_expire_minutes * 60,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        REFRESH_COOKIE,
+        token,
+        max_age=settings.refresh_token_expire_days * 86400,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path=COOKIE_PATH,
+    )
 
 
 class SignupIn(BaseModel):
@@ -49,18 +74,6 @@ class OnboardingIn(BaseModel):
     work_style: str
     primary_language: str
     key_pain: str
-
-
-def _set_refresh_cookie(response: Response, token: str) -> None:
-    response.set_cookie(
-        REFRESH_COOKIE,
-        token,
-        max_age=settings.refresh_token_expire_days * 86400,
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite="lax",
-        path=COOKIE_PATH,
-    )
 
 
 def _slugify(name: str) -> str:
@@ -221,6 +234,7 @@ async def logout(
     if token:
         await revoke_refresh_token(session, token)
     response.delete_cookie(REFRESH_COOKIE, path=COOKIE_PATH, secure=settings.cookie_secure, httponly=True, samesite="lax")
+    response.delete_cookie(ACCESS_COOKIE, path="/", secure=settings.cookie_secure, httponly=True, samesite="lax")
     return {"status": "logged_out"}
 
 
@@ -364,10 +378,11 @@ async def google_oauth_callback(
     access = create_access_token(row["id"], row["organization_id"], row["role"])
     refresh = await create_refresh_token(session, row["id"], ip=request.client.host if request.client else None)
     _set_refresh_cookie(response, refresh)
+    _set_access_cookie(response, access)
 
     from fastapi.responses import RedirectResponse
 
     return RedirectResponse(
-        f"{settings.frontend_url}/{row['slug']}/dashboard?token={access}",
+        f"{settings.frontend_url}/{row['slug']}/dashboard",
         status_code=302,
     )

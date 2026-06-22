@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.llm_client import generate_text
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
+from app.services.document_search import embed_document, search_documents_semantic
 from app.storage.s3 import get_storage
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -67,6 +68,14 @@ async def upload_document(
         ),
     )
     await session.commit()
+
+    text_for_embed = f"{title} {file.filename or ''}"
+    try:
+        await embed_document(session, str(doc_id), text_for_embed)
+        await session.commit()
+    except Exception:
+        pass
+
     return {"id": str(doc_id), "file_url": file_url}
 
 
@@ -101,6 +110,10 @@ async def summarize_document(
             s=summary, did=doc_id
         ),
     )
+    try:
+        await embed_document(session, doc_id, f"{row['title']} {summary}")
+    except Exception:
+        pass
     await session.commit()
     return {"summary": summary, "model": model}
 
@@ -111,14 +124,5 @@ async def search_documents(
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    rows = (
-        await session.execute(
-            text(
-                "SELECT id, title, ai_summary, file_url FROM documents"
-                " WHERE organization_id = CAST(:oid AS uuid)"
-                " AND (title ILIKE :q OR ocr_text ILIKE :q OR ai_summary ILIKE :q)"
-                " ORDER BY created_at DESC LIMIT 20"
-            ).bindparams(oid=str(user["organization_id"]), q=f"%{q}%"),
-        )
-    ).mappings().all()
-    return {"items": [dict(r) for r in rows], "query": q}
+    items = await search_documents_semantic(session, str(user["organization_id"]), q, limit=20)
+    return {"items": items, "query": q}

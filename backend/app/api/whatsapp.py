@@ -1,14 +1,16 @@
-"""WhatsApp gateway — Twilio webhook."""
+"""WhatsApp gateway — Twilio webhook with signature validation."""
 
 from __future__ import annotations
 
 import hashlib
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request, status
 from sqlalchemy import text
+from twilio.request_validator import RequestValidator
 
 from app.agents import core
 from app.agents.memory_service import MemoryService
+from app.config import settings
 from app.db.session import SessionLocal
 from app.delivery.whatsapp import whatsapp_client
 from app.workers.whatsapp_classifier import classify_whatsapp_message
@@ -20,12 +22,25 @@ def _hash_phone(phone: str) -> str:
     return hashlib.sha256(phone.encode()).hexdigest()
 
 
+def _validate_twilio(request: Request, params: dict[str, str]) -> None:
+    if not settings.twilio_auth_token:
+        return
+    signature = request.headers.get("X-Twilio-Signature", "")
+    url = str(request.url)
+    validator = RequestValidator(settings.twilio_auth_token)
+    if not validator.validate(url, params, signature):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Signature Twilio invalide")
+
+
 @router.post("/webhook")
 async def twilio_webhook(
     request: Request,
     From: str = Form(...),
     Body: str = Form(...),
 ) -> dict:
+    params = {"From": From, "Body": Body}
+    _validate_twilio(request, params)
+
     phone_hash = _hash_phone(From.replace("whatsapp:", ""))
 
     async with SessionLocal() as session:

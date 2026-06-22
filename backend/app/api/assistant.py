@@ -32,8 +32,12 @@ async def ask(
     payload = {
         "answer": result.answer,
         "confidence": result.confidence,
+        "confidence_label": result.confidence_label,
         "sources": result.sources,
         "model": result.model,
+        "actions_taken": result.actions_taken,
+        "api_configured": result.api_configured,
+        "grounded": result.grounded,
     }
     await session.execute(
         text(

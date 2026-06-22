@@ -23,3 +23,5 @@ Multi-tenant offline-first team platform for West African field organizations. T
 5. AI-created tasks show provenance (source + reference)
 6. Phone numbers SHA-256 hashed, never logged
 7. Offline field reports via IndexedDB sync queue (`teambrain-offline`)
+8. Local dev ports: frontend **3010**, API **8010** (see `docs/local-dev.md`)
+9. After each task, update informational docs (`README.md`, `docs/`, `.env.example`, this file)

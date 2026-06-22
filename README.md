@@ -6,7 +6,17 @@ Team coordination SaaS with agentic Team Brain — multi-tenant offline-first pl
 
 - `backend/` — FastAPI + PostgreSQL (RLS) + Alembic + Team Brain agents
 - `frontend/` — Next.js 14 PWA + Tailwind
-- `docs/` — Architecture, deploy, and data contracts
+- `docs/` — Architecture, deploy, local dev, data contracts, [audit](audit-2026-06.md)
+
+## Local dev ports
+
+TeamBrain runs on **3010** (frontend) and **8010** (API) by default so it does not conflict with other apps on 3000/8000. See **[docs/local-dev.md](docs/local-dev.md)** for full setup.
+
+| Service | URL |
+|---------|-----|
+| App | http://localhost:3010 |
+| API | http://localhost:8010 |
+| Swagger | http://localhost:8010/docs |
 
 ## Team Brain layer
 
@@ -25,20 +35,20 @@ Surfaces wired to memory: meetings, field reports, tasks, WhatsApp, assistant, a
 
 ```bash
 cd backend
-cp .env.example .env   # fill DATABASE_URL, JWT_SECRET_KEY
+cp .env.example .env   # fill DATABASE_URL, JWT_SECRET_KEY (see docs/local-dev.md)
 pip install -e ".[dev]"
 alembic upgrade head
 python scripts/seed_timtimol.py
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
 ```
 
 ### Frontend
 
 ```bash
 cd frontend
-cp .env.example .env.local
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8010
 npm install
-npm run dev
+npm run dev   # http://localhost:3010
 ```
 
 Demo login after seed: `amadou@timtimol.sn` / `Timtimol2026!`

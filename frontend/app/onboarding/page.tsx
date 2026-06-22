@@ -59,7 +59,7 @@ const QUESTIONS = [
 ];
 
 export default function OnboardingPage() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, refreshUser } = useAuth();
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -82,7 +82,8 @@ export default function OnboardingPage() {
         primary_language: answers.primary_language ?? "fr",
         key_pain: answers.key_pain ?? "all",
       });
-      router.push(`/${user?.org_slug}/dashboard`);
+      const updated = await refreshUser();
+      router.push(`/${updated?.org_slug ?? user?.org_slug}/dashboard`);
     } finally {
       setSubmitting(false);
     }

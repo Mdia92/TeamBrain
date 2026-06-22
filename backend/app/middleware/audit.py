@@ -1,4 +1,4 @@
-"""Append-only audit middleware."""
+"""Append-only audit middleware with org context."""
 
 from __future__ import annotations
 
@@ -50,24 +50,27 @@ class AuditMiddleware:
         headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
         method, path = scope.get("method"), scope.get("path", "")
         actor = None
+        org_id = None
         auth = headers.get("authorization", "")
         if auth.lower().startswith("bearer "):
             payload = decode_token(auth.split(" ", 1)[1])
             if payload and payload.get("type") == "access":
                 actor = payload.get("sub")
+                org_id = payload.get("org")
         client = scope.get("client")
         ip = client[0] if client else None
         entity = (path.strip("/").split("/")[0] or "root")[:64]
         async with SessionLocal() as session:
             await session.execute(
                 text(
-                    "INSERT INTO audit_log (action, entity_type, actor_user_id,"
+                    "INSERT INTO audit_log (action, entity_type, actor_user_id, organization_id,"
                     " payload_sha256, ip_address, user_agent) VALUES"
-                    " (:a, :e, CAST(:u AS uuid), :p, CAST(:ip AS inet), :ua)"
+                    " (:a, :e, CAST(:u AS uuid), CAST(:oid AS uuid), :p, CAST(:ip AS inet), :ua)"
                 ).bindparams(
                     a=f"{method} {path}"[:128],
                     e=entity,
                     u=actor,
+                    oid=org_id,
                     p=hashlib.sha256(body).hexdigest(),
                     ip=ip,
                     ua=headers.get("user-agent", "")[:512],

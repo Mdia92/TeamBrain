@@ -7,7 +7,14 @@ import structlog
 
 from app.config import settings
 
-log = structlog.get_logger("coord.llm")
+log = structlog.get_logger("teambrain.llm")
+
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_EMBED_MODEL = "text-embedding-005"
+
+
+def llm_configured() -> bool:
+    return bool(settings.gemini_api_key or settings.groq_api_key or settings.mistral_api_key)
 
 
 async def _call_gemini(prompt: str, system: str = "") -> str | None:
@@ -15,7 +22,7 @@ async def _call_gemini(prompt: str, system: str = "") -> str | None:
         return None
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-2.0-flash:generateContent?key={settings.gemini_api_key}"
+        f"{GEMINI_MODEL}:generateContent?key={settings.gemini_api_key}"
     )
     body = {
         "contents": [{"parts": [{"text": f"{system}\n\n{prompt}" if system else prompt}]}],
@@ -67,8 +74,10 @@ async def _call_mistral(prompt: str, system: str = "") -> str | None:
 
 async def generate_text(prompt: str, system: str = "") -> tuple[str, str]:
     """Returns (text, model_used). Falls back through the chain."""
+    if not llm_configured():
+        return "Configurez une clé API dans les paramètres.", "none"
     for name, fn in [
-        ("gemini", _call_gemini),
+        ("gemini-2.5-flash", _call_gemini),
         ("groq", _call_groq),
         ("mistral", _call_mistral),
     ]:

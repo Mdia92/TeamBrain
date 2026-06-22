@@ -25,17 +25,48 @@ alembic upgrade head
 python scripts/seed_timtimol.py   # optional demo data (Timtimol AIS)
 ```
 
-## Event worker
+## Event worker (APScheduler)
 
-Schedule `POST /api/events/run` (or invoke worker functions from a cron job) for Team Brain closed loops: overdue tasks, commitment reminders, field-report gaps.
+The API starts **APScheduler** automatically on boot:
 
-Protect this endpoint in production (API key, Railway cron secret, or internal network only).
+| Job | Schedule |
+|-----|----------|
+| Overdue task alerts | Every 6 hours |
+| Commitment reminders | Daily 08:00 |
+| Field report gaps | Monday 07:00 |
+
+Manual trigger (admin): `POST /api/events/run-checks?weekly=true`
+
+Task status changes and meeting processing also trigger immediate org-scoped checks.
+
+## PostgreSQL RLS role setup
+
+After migrations, ensure the app DB user can assume `coord_app`:
+
+```sql
+-- Created by migration 004_app_grants
+GRANT coord_app TO app_user;
+GRANT app_user TO postgres;  -- or your Railway/Supabase login role
+
+-- Production: create a dedicated login role
+CREATE ROLE teambrain_login LOGIN PASSWORD 'your_secure_password';
+GRANT app_user TO teambrain_login;
+-- Use teambrain_login in DATABASE_URL (not superuser postgres)
+```
+
+Enable pgvector (also run at API startup):
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
 
 ## Local development
 
+TeamBrain uses ports **3010** (frontend) and **8010** (API) by default. See [local-dev.md](local-dev.md).
+
 ```bash
 # Terminal 1 — API
-cd backend && uvicorn app.main:app --reload
+cd backend && uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
 
 # Terminal 2 — UI
 cd frontend && npm run dev

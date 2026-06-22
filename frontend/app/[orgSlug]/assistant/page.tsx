@@ -4,13 +4,25 @@ import { FormEvent, useState } from "react";
 import { apiClient } from "@/app/lib/api";
 import { t } from "@/app/lib/i18n";
 
+type AssistantAnswer = {
+  answer: string;
+  confidence: number;
+  confidence_label: string;
+  sources: string[];
+  api_configured?: boolean;
+  actions_taken?: string[];
+  grounded?: boolean;
+};
+
+function confidenceBadgeClass(label: string): string {
+  if (label === "Haute") return "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300";
+  if (label === "Moyenne") return "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300";
+  return "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300";
+}
+
 export default function AssistantPage() {
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<{
-    answer: string;
-    confidence: number;
-    sources: string[];
-  } | null>(null);
+  const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleAsk(e: FormEvent) {
@@ -18,7 +30,7 @@ export default function AssistantPage() {
     if (!question.trim()) return;
     setLoading(true);
     try {
-      const r = await apiClient.post<typeof answer>("/api/assistant/ask", { question });
+      const r = await apiClient.post<AssistantAnswer>("/api/assistant/ask", { question });
       setAnswer(r);
     } finally {
       setLoading(false);
@@ -44,13 +56,40 @@ export default function AssistantPage() {
       </form>
       {answer && (
         <div className="rounded-xl border border-stone-200 bg-white p-6 dark:border-stone-800 dark:bg-stone-900">
-          <p className="whitespace-pre-wrap">{answer.answer}</p>
-          <div className="mt-4 flex items-center gap-4 text-xs text-stone-500">
-            <span>Confiance: {Math.round((answer.confidence ?? 0) * 100)}%</span>
-            {answer.sources?.length > 0 && (
-              <span>Sources: {answer.sources.join(", ")}</span>
-            )}
+          {answer.api_configured === false && (
+            <p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              Configurez une clé API dans les paramètres (GEMINI, GROQ ou MISTRAL).
+            </p>
+          )}
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-xs text-stone-500">Confiance</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${confidenceBadgeClass(answer.confidence_label ?? "Faible")}`}
+            >
+              {answer.confidence_label ?? "Faible"} ({Math.round((answer.confidence ?? 0) * 100)}%)
+            </span>
           </div>
+          <p className="whitespace-pre-wrap">{answer.answer}</p>
+          {answer.actions_taken && answer.actions_taken.length > 0 && (
+            <div className="mt-4 rounded-lg bg-stone-50 p-3 text-sm dark:bg-stone-800">
+              <p className="font-medium">Actions exécutées</p>
+              <ul className="mt-1 list-inside list-disc text-stone-600 dark:text-stone-400">
+                {answer.actions_taken.map((a) => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {answer.sources?.length > 0 && (
+            <div className="mt-4 border-t border-stone-200 pt-4 dark:border-stone-700">
+              <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Sources</p>
+              <ul className="mt-2 space-y-1 text-xs text-stone-600 dark:text-stone-400">
+                {answer.sources.map((s) => (
+                  <li key={s}>• {s}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>

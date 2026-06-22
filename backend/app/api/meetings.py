@@ -13,6 +13,7 @@ from app.agents.meeting_extractor import extract_meeting_intelligence
 from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
+from app.events.worker import trigger_on_meeting_processed
 from app.storage.s3 import get_storage
 from app.workers.transcription import transcribe_audio
 
@@ -214,6 +215,7 @@ async def upload_meeting(
         ),
     )
     await session.commit()
+    await trigger_on_meeting_processed(session, oid)
 
     return {
         "id": str(mid),

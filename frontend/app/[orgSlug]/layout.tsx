@@ -23,8 +23,12 @@ export default function OrgLayout({
     }
     if (!user.onboarding_completed) {
       router.replace("/onboarding");
+      return;
     }
-  }, [user, isLoading, router]);
+    if (user.org_slug && params.orgSlug !== user.org_slug) {
+      router.replace(`/${user.org_slug}/dashboard`);
+    }
+  }, [user, isLoading, router, params.orgSlug]);
 
   if (isLoading || !user) {
     return (
@@ -32,6 +36,10 @@ export default function OrgLayout({
         <p className="text-stone-500">Chargement...</p>
       </div>
     );
+  }
+
+  if (user.org_slug && params.orgSlug !== user.org_slug) {
+    return null;
   }
 
   return <AppShell orgSlug={params.orgSlug}>{children}</AppShell>;

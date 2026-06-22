@@ -13,6 +13,12 @@ def test_health():
     assert r.json()["status"] == "ok"
 
 
+def test_api_health_alias():
+    r = client.get("/api/health")
+    assert r.status_code == 200
+    assert r.json()["service"] == "teambrain-api"
+
+
 def test_root():
     r = client.get("/")
     assert r.status_code == 200

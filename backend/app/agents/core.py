@@ -2,21 +2,12 @@
 
 from __future__ import annotations
 
-import json
-import re
-from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.llm_client import generate_text
+from app.agents.agent_loop import AgentResult, run_agent
 from app.agents.memory_service import MemoryService
-
-ASSISTANT_SYSTEM = """Tu es l'assistant TeamBrain. Réponds en français.
-Base-toi UNIQUEMENT sur le contexte fourni. Cite toujours tes sources avec source_module
-et source_id. Si tu n'es pas certain, dis-le clairement.
-Réponds en JSON: {"answer": "...", "confidence": 0.0-1.0, "sources": ["module:id — note"]}"""
 
 ACCOUNTABILITY_KEYWORDS = (
     "qui doit",
@@ -33,34 +24,53 @@ ACCOUNTABILITY_KEYWORDS = (
 )
 
 
-@dataclass
 class MemoryEntry:
-    id: str
-    type: str
-    entity_type: str | None
-    entity_id: str | None
-    note: str | None
-    source_module: str | None
-    source_id: str | None
-    similarity_score: float = 0.0
+    def __init__(
+        self,
+        id: str,
+        type: str,
+        entity_type: str | None,
+        entity_id: str | None,
+        note: str | None,
+        source_module: str | None,
+        source_id: str | None,
+        similarity_score: float = 0.0,
+    ) -> None:
+        self.id = id
+        self.type = type
+        self.entity_type = entity_type
+        self.entity_id = entity_id
+        self.note = note
+        self.source_module = source_module
+        self.source_id = source_id
+        self.similarity_score = similarity_score
 
 
-@dataclass
 class AccountabilityReport:
-    people: list[dict] = field(default_factory=list)
+    def __init__(self, people: list[dict] | None = None) -> None:
+        self.people = people or []
 
 
-@dataclass
 class AssistantResponse:
-    answer: str
-    confidence: float
-    sources: list[str]
-    model: str
-
-
-def _needs_accountability(question: str) -> bool:
-    lower = question.lower()
-    return any(kw in lower for kw in ACCOUNTABILITY_KEYWORDS)
+    def __init__(
+        self,
+        answer: str,
+        confidence: float,
+        sources: list[str],
+        model: str,
+        confidence_label: str = "Moyenne",
+        actions_taken: list[str] | None = None,
+        api_configured: bool = True,
+        grounded: bool = True,
+    ) -> None:
+        self.answer = answer
+        self.confidence = confidence
+        self.sources = sources
+        self.model = model
+        self.confidence_label = confidence_label
+        self.actions_taken = actions_taken or []
+        self.api_configured = api_configured
+        self.grounded = grounded
 
 
 async def ingest(
@@ -70,7 +80,6 @@ async def ingest(
     content: str,
     metadata: dict[str, Any],
 ) -> MemoryEntry:
-    """Write to the unified brain."""
     brain = MemoryService(session)
     memory_id = await brain.write_memory(
         org_id=org_id,
@@ -132,89 +141,15 @@ async def ask(
     question: str,
     user_id: str | None = None,
 ) -> AssistantResponse:
-    """Unified brain-powered assistant."""
-    brain = MemoryService(session)
-
-    memories = await brain.search_memory(org_id, question, limit=12)
-    hydrated = [await brain.hydrate_memory(m) for m in memories[:8]]
-
-    context_parts: list[str] = []
-    for h in hydrated:
-        mem = h["memory"]
-        src = f"{mem.source_module}:{mem.source_id}" if mem.source_module else "mémoire"
-        context_parts.append(f"[{src}] ({mem.type}) {mem.note}")
-        if h.get("source_detail"):
-            context_parts.append(f"  Détail: {json.dumps(h['source_detail'], default=str)}")
-
-    if _needs_accountability(question):
-        accountability = await brain.get_who_owes_what(org_id)
-        if accountability:
-            context_parts.append(
-                "Responsabilités ouvertes: " + json.dumps(accountability, default=str)
-            )
-
-    # Project status fallback from live data when query mentions a project name
-    project_rows = (
-        await session.execute(
-            text(
-                "SELECT p.name, p.status, p.client_name,"
-                " (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status != 'done') AS open_tasks"
-                " FROM projects p WHERE p.organization_id = CAST(:oid AS uuid)"
-            ).bindparams(oid=org_id),
-        )
-    ).mappings().all()
-    if project_rows:
-        context_parts.append("Projets: " + json.dumps([dict(r) for r in project_rows], default=str))
-
-    # Field report gap for agents this week
-    if "rapport" in question.lower():
-        gap_rows = (
-            await session.execute(
-                text(
-                    "SELECT u.full_name FROM users u"
-                    " WHERE u.organization_id = CAST(:oid AS uuid)"
-                    " AND u.role = 'field_agent'"
-                    " AND NOT EXISTS ("
-                    "   SELECT 1 FROM field_reports fr"
-                    "   WHERE fr.submitted_by = u.id"
-                    "   AND fr.mission_date >= CURRENT_DATE - INTERVAL '7 days'"
-                    " )"
-                ).bindparams(oid=org_id),
-            )
-        ).mappings().all()
-        if gap_rows:
-            names = [r["full_name"] for r in gap_rows]
-            context_parts.append(f"Agents sans rapport cette semaine: {', '.join(names)}")
-
-    context = "\n".join(context_parts) or "Aucune mémoire pertinente trouvée."
-    prompt = f"Contexte organisation:\n{context}\n\nQuestion: {question}"
-    if user_id:
-        prompt += f"\n(Demandé par user_id: {user_id})"
-
-    raw, model = await generate_text(prompt, ASSISTANT_SYSTEM)
-
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if match:
-        try:
-            data = json.loads(match.group())
-            sources = data.get("sources", [])
-            for m in memories[:5]:
-                src = f"{m.source_module}:{m.source_id}"
-                if src not in sources and m.note:
-                    sources.append(f"{src} — {m.note[:80]}")
-            return AssistantResponse(
-                answer=data.get("answer", raw),
-                confidence=float(data.get("confidence", 0.7)),
-                sources=sources,
-                model=model,
-            )
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-    sources = [f"{m.source_module}:{m.source_id}" for m in memories[:3] if m.source_module]
+    """Unified agentic assistant via MCP tool loop."""
+    result: AgentResult = await run_agent(session, org_id, question, user_id=user_id)
     return AssistantResponse(
-        answer=raw,
-        confidence=0.5,
-        sources=sources or ["mémoire interne"],
-        model=model,
+        answer=result.answer,
+        confidence=result.confidence,
+        sources=result.sources,
+        model=result.model,
+        confidence_label=result.confidence_label,
+        actions_taken=result.actions_taken,
+        api_configured=result.api_configured,
+        grounded=result.grounded,
     )

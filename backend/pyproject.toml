@@ -23,6 +23,7 @@ dependencies = [
     "python-dotenv",
     "python-multipart",
     "pgvector",
+    "apscheduler>=3.10",
     "authlib",
 ]
 
