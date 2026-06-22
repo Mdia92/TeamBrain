@@ -13,3 +13,6 @@ dist/
 .ruff_cache/
 backend/.venv/
 frontend/.next/
+coverage/
+htmlcov/
+.vercel

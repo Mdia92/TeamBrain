@@ -1,6 +1,6 @@
 # TeamBrain
 
-Multi-tenant offline-first team platform for West African field organizations. **TeamBrain** unifies projects, messaging, field reports, meetings, and WhatsApp into a single organizational memory layer with rules-first automation and org-grounded AI.
+Team coordination SaaS with agentic Team Brain — multi-tenant offline-first platform for West African field organizations. **TeamBrain** unifies projects, messaging, field reports, meetings, and WhatsApp into a single organizational memory layer with rules-first automation and org-grounded AI.
 
 ## Structure
 
@@ -61,3 +61,7 @@ Demo login after seed: `amadou@timtimol.sn` / `Timtimol2026!`
 9. Meeting intelligence (transcribe → decisions, commitments, auto-tasks)
 10. WhatsApp gateway (Twilio webhook + `core.ask()`)
 11. AI assistant (delegates to `core.ask()`)
+
+## License
+
+MIT — see [LICENSE](LICENSE).
