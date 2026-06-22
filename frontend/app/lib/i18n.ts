@@ -1,0 +1,46 @@
+export const fr = {
+  appName: "TeamBrain",
+  tagline: "Plateforme TeamBrain pour organisations terrain",
+  login: "Connexion",
+  signup: "Inscription",
+  logout: "Déconnexion",
+  dashboard: "Tableau de bord",
+  projects: "Projets",
+  tasks: "Tâches",
+  documents: "Documents",
+  messages: "Messages",
+  calendar: "Calendrier",
+  fieldReports: "Rapports terrain",
+  meetings: "Réunions",
+  assistant: "Assistant IA",
+  dailyStatus: "Statut du jour",
+  activeProjects: "Projets actifs",
+  tasksThisWeek: "Tâches terminées cette semaine",
+  overdueTasks: "Tâches en retard",
+  fieldReportsWeek: "Rapports terrain cette semaine",
+  upcomingDeadlines: "Échéances à venir",
+  newProject: "Nouveau projet",
+  newTask: "Nouvelle tâche",
+  newReport: "Nouveau rapport",
+  pendingSync: "rapports en attente de synchronisation",
+  askAssistant: "Posez une question à l'assistant...",
+  onboardingTitle: "Configurez votre espace",
+  email: "Email",
+  password: "Mot de passe",
+  fullName: "Nom complet",
+  organizationName: "Nom de l'organisation",
+  continue: "Continuer",
+  loading: "Chargement...",
+  save: "Enregistrer",
+  cancel: "Annuler",
+  search: "Rechercher",
+  upload: "Téléverser",
+  offline: "Hors ligne",
+  online: "En ligne",
+} as const;
+
+export type I18nKey = keyof typeof fr;
+
+export function t(key: I18nKey): string {
+  return fr[key];
+}

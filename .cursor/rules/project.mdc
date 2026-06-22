@@ -1,0 +1,25 @@
+---
+description: TeamBrain project rules
+alwaysApply: true
+---
+
+# TeamBrain
+
+Multi-tenant offline-first team platform for West African field organizations. TeamBrain unifies modules through an organizational memory layer (Team Brain).
+
+## Stack
+- Backend: FastAPI + SQLAlchemy 2.0 + Alembic + asyncpg
+- Frontend: Next.js App Router + TypeScript + Tailwind + shadcn/ui + PWA
+- DB: PostgreSQL (Supabase = managed Postgres only) with RLS on organization_id
+- Auth: FastAPI JWT (never Supabase Auth)
+- Storage: S3 StorageBackend abstraction (never Supabase Storage client)
+- Memory: MemoryService + core.py (single path for memory_metadata)
+
+## Rules
+1. Every business table has organization_id + RLS
+2. French default UI; official product name is **TeamBrain**
+3. Rules first, AI second for reminders and alerts
+4. Write memory only via MemoryService — no direct memory_metadata inserts
+5. AI-created tasks show provenance (source + reference)
+6. Phone numbers SHA-256 hashed, never logged
+7. Offline field reports via IndexedDB sync queue (`teambrain-offline`)
