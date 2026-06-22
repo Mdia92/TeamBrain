@@ -25,8 +25,11 @@ async def list_members(
     rows = (
         await session.execute(
             text(
-                "SELECT id, full_name, email, role, is_active, created_at FROM users"
-                " WHERE organization_id = CAST(:oid AS uuid) ORDER BY full_name"
+                "SELECT u.id, u.full_name, u.email, om.role, u.is_active, om.joined_at"
+                " FROM org_memberships om"
+                " JOIN users u ON u.id = om.user_id"
+                " WHERE om.organization_id = CAST(:oid AS uuid) AND om.is_active = true"
+                " ORDER BY u.full_name"
             ).bindparams(oid=str(user["organization_id"])),
         )
     ).mappings().all()
@@ -46,8 +49,9 @@ async def update_member_role(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Vous ne pouvez pas modifier votre propre rôle")
     result = await session.execute(
         text(
-            "UPDATE users SET role = :role WHERE id = CAST(:mid AS uuid)"
-            " AND organization_id = CAST(:oid AS uuid) RETURNING id"
+            "UPDATE org_memberships SET role = :role"
+            " WHERE user_id = CAST(:mid AS uuid)"
+            " AND organization_id = CAST(:oid AS uuid) RETURNING user_id"
         ).bindparams(role=body.role, mid=member_id, oid=str(user["organization_id"])),
     )
     if not result.first():

@@ -78,6 +78,41 @@ async def dashboard(
         )
     ).mappings().all()
 
+    org_settings = (
+        await session.execute(
+            text("SELECT settings FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(oid=oid),
+        )
+    ).mappings().first()
+    settings = org_settings["settings"] if org_settings else {}
+    checklist = settings.get("setup_checklist", {}) if isinstance(settings, dict) else {}
+
+    project_count = (
+        await session.execute(
+            text("SELECT COUNT(*) FROM projects WHERE organization_id = CAST(:oid AS uuid)").bindparams(oid=oid),
+        )
+    ).scalar() or 0
+    report_count = (
+        await session.execute(
+            text("SELECT COUNT(*) FROM field_reports WHERE organization_id = CAST(:oid AS uuid)").bindparams(oid=oid),
+        )
+    ).scalar() or 0
+    meeting_count = (
+        await session.execute(
+            text(
+                "SELECT COUNT(*) FROM meetings WHERE organization_id = CAST(:oid AS uuid)"
+                " AND ai_summary IS NOT NULL"
+            ).bindparams(oid=oid),
+        )
+    ).scalar() or 0
+
+    setup_checklist = {
+        "profile_completed": checklist.get("profile_completed", True),
+        "team_invited": checklist.get("team_invited", False),
+        "first_project": project_count > 0,
+        "first_field_report": report_count > 0,
+        "first_meeting": meeting_count > 0,
+    }
+
     return {
         "kpis": {
             "active_projects": active_projects,
@@ -87,5 +122,6 @@ async def dashboard(
         },
         "upcoming_deadlines": [dict(r) for r in upcoming],
         "recent_field_reports": [dict(r) for r in recent_reports],
+        "setup_checklist": setup_checklist,
         "generated_at": datetime.now(UTC).isoformat(),
     }

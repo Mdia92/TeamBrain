@@ -18,7 +18,13 @@ These steps require your credentials and cannot be automated in CI:
    - `DATABASE_URL` — use **Session pooler** (IPv4) if direct `db.*.supabase.co` fails on your network  
      Example: `postgresql+asyncpg://postgres.<project-ref>:<password>@aws-1-eu-central-1.pooler.supabase.com:5432/postgres`
    - `JWT_SECRET_KEY` — `python -c "import secrets; print(secrets.token_urlsafe(32))"`
-   - LLM keys (optional): `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`
+   - **LLM keys** (paste in `backend/.env`, lines `GEMINI_API_KEY` and `GROQ_API_KEY`):
+     ```env
+     GEMINI_API_KEY=your_gemini_key_here
+     GROQ_API_KEY=your_groq_key_here
+     ```
+     Get Gemini: [Google AI Studio](https://aistudio.google.com/apikey) · Groq: [console.groq.com](https://console.groq.com)
+   - Optional: `MISTRAL_API_KEY`, Twilio, S3, Google OAuth
 3. **`frontend/.env.local`** — `NEXT_PUBLIC_API_URL=http://localhost:8010`
 4. **Migrations & seed** (once per database):
    ```bash
@@ -64,7 +70,7 @@ If `3010` or `8010` are taken, pick free ports and update:
 | Task | Why |
 |------|-----|
 | Create/manage Supabase project & password | Your cloud account |
-| Add API keys (Gemini, Groq, Twilio, S3, Google OAuth) | Your vendor accounts |
+| Add API keys in **`backend/.env`** (`GEMINI_API_KEY`, `GROQ_API_KEY`) | Your vendor accounts — file is gitignored |
 | Create GitHub repo / Railway / Vercel deploy | Your hosting accounts |
 | Rotate leaked secrets | Security — never commit `.env` |
 | Enable IPv6 or use pooler URL | Network-specific DB connectivity |

@@ -18,7 +18,9 @@ from app.api import (
     invites,
     meetings,
     members,
+    memory,
     messages,
+    organizations,
     projects,
     sync,
     tasks,
@@ -44,7 +46,7 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title="TeamBrain API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="TeamBrain API", version="0.3.0", lifespan=lifespan)
 app.state.limiter = limiter
 install_error_handlers(app)
 
@@ -71,8 +73,10 @@ app.include_router(sync.router)
 app.include_router(events.router)
 app.include_router(members.router)
 app.include_router(invites.router)
+app.include_router(memory.router)
+app.include_router(organizations.router)
 
 
 @app.get("/")
 async def root() -> dict:
-    return {"name": "TeamBrain", "status": "ok", "version": "0.2.0"}
+    return {"name": "TeamBrain", "status": "ok", "version": "0.3.0"}

@@ -6,7 +6,7 @@ Team coordination SaaS with agentic Team Brain — multi-tenant offline-first pl
 
 - `backend/` — FastAPI + PostgreSQL (RLS) + Alembic + Team Brain agents
 - `frontend/` — Next.js 14 PWA + Tailwind
-- `docs/` — Architecture, deploy, local dev, data contracts, [audit](audit-2026-06.md)
+- `docs/` — Architecture, deploy, local dev, [Batch 2 plan](batch-2-plan.md)
 
 ## Local dev ports
 
@@ -57,6 +57,14 @@ Demo login after seed: `amadou@timtimol.sn` / `Timtimol2026!`
 
 - Backend: Railway (`backend/`, see `docs/deploy.md`)
 - Frontend: Vercel (`frontend/`)
+
+## Batch 2 (June 2026)
+
+- **Multi-org** — `org_memberships`, org switcher, JWT re-issue via `POST /api/auth/switch-org`
+- **Onboarding** — `/create` 6-step flow, `/invite/{token}` join path
+- **Memory moat** — dedup on write, decay in search, weekly pattern job, `/{orgSlug}/memory`
+- **Free trial** — 30 days, read-only after expiry, banner + `/pricing`
+- **Scalability** — HNSW index, cursor pagination, per-org rate limits, idempotent jobs
 
 ## Modules
 

@@ -11,6 +11,13 @@ export type User = {
   org_name?: string;
   onboarding_completed?: boolean;
   settings?: Record<string, unknown>;
+  organizations?: { id: string; name: string; slug: string; role: string }[];
+  billing?: {
+    pricing_tier: string;
+    trial_days_left: number | null;
+    is_read_only: boolean;
+    trial_ends_at?: string | null;
+  };
 };
 
 export type LoginResponse = {

@@ -13,6 +13,21 @@ type DashboardData = {
   };
   upcoming_deadlines: { id: string; title: string; due_date: string; priority: string }[];
   recent_field_reports: { id: string; location_name: string; mission_date: string; ai_summary: string }[];
+  setup_checklist?: {
+    profile_completed: boolean;
+    team_invited: boolean;
+    first_project: boolean;
+    first_field_report: boolean;
+    first_meeting: boolean;
+  };
+};
+
+const CHECKLIST_LABELS: Record<string, string> = {
+  profile_completed: "Profil complété",
+  team_invited: "Équipe invitée",
+  first_project: "Premier projet créé",
+  first_field_report: "Premier rapport terrain",
+  first_meeting: "Première réunion analysée",
 };
 
 export default function DashboardPage() {
@@ -31,9 +46,31 @@ export default function DashboardPage() {
     { label: t("fieldReportsWeek"), value: data.kpis.field_reports_week },
   ];
 
+  const checklist = data.setup_checklist;
+  const checklistDone = checklist
+    ? Object.values(checklist).every(Boolean)
+    : true;
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">{t("dashboard")}</h1>
+
+      {checklist && !checklistDone && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
+          <h2 className="font-semibold">Configuration initiale</h2>
+          <ul className="mt-3 space-y-2">
+            {Object.entries(checklist).map(([key, done]) => (
+              <li key={key} className="flex items-center gap-2 text-sm">
+                <span className={done ? "text-green-600" : "text-stone-400"}>
+                  {done ? "☑" : "☐"}
+                </span>
+                {CHECKLIST_LABELS[key] ?? key}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k) => (
           <div

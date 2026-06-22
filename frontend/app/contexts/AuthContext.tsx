@@ -22,9 +22,14 @@ type AuthContextValue = {
     password: string;
     full_name: string;
     organization_name: string;
+    industry?: string;
+    team_size?: string;
+    primary_language?: string;
   }) => Promise<User>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<User | null>;
+  switchOrg: (organizationId: string) => Promise<User>;
+  applySession: (result: { access_token: string; user: User }) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -73,6 +78,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: string;
       full_name: string;
       organization_name: string;
+      industry?: string;
+      team_size?: string;
+      primary_language?: string;
     }) => {
       const result = await authApi.signup(data);
       accessTokenRef.current = result.access_token;
@@ -81,6 +89,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  const switchOrg = useCallback(async (organizationId: string) => {
+    const result = await authApi.switchOrg(organizationId);
+    accessTokenRef.current = result.access_token;
+    const profile = await authApi.me();
+    setUser(profile);
+    router.push(`/${profile.org_slug}/dashboard`);
+    return profile;
+  }, [router]);
+
+  const applySession = useCallback((result: { access_token: string; user: User }) => {
+    accessTokenRef.current = result.access_token;
+    setUser(result.user);
+  }, []);
 
   useEffect(() => {
     configureApiAuth({
@@ -116,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setAccessToken]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, refreshUser, switchOrg, applySession }}>
       {children}
     </AuthContext.Provider>
   );

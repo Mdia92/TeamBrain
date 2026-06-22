@@ -36,13 +36,75 @@ PROJECTS = [
 
 async def seed() -> None:
     async with SessionLocal() as session:
-        await session.execute(text("DELETE FROM organizations WHERE slug = 'timtimol'"))
+        oid = str(ORG_ID)
+        await session.execute(
+            text(
+                "DELETE FROM meeting_commitments WHERE meeting_id IN"
+                " (SELECT id FROM meetings WHERE organization_id = CAST(:oid AS uuid))"
+            ).bindparams(oid=oid),
+        )
+        await session.execute(
+            text(
+                "DELETE FROM meeting_action_items WHERE meeting_id IN"
+                " (SELECT id FROM meetings WHERE organization_id = CAST(:oid AS uuid))"
+            ).bindparams(oid=oid),
+        )
+        await session.execute(
+            text(
+                "DELETE FROM meeting_decisions WHERE meeting_id IN"
+                " (SELECT id FROM meetings WHERE organization_id = CAST(:oid AS uuid))"
+            ).bindparams(oid=oid),
+        )
+        await session.execute(
+            text(
+                "DELETE FROM event_attendees WHERE event_id IN"
+                " (SELECT id FROM events WHERE organization_id = CAST(:oid AS uuid))"
+            ).bindparams(oid=oid),
+        )
+        await session.execute(
+            text(
+                "DELETE FROM messages WHERE channel_id IN"
+                " (SELECT id FROM channels WHERE organization_id = CAST(:oid AS uuid))"
+            ).bindparams(oid=oid),
+        )
+        for table in (
+            "agent_runs",
+            "sync_queue",
+            "memory_metadata",
+            "daily_status",
+            "field_reports",
+            "meetings",
+            "events",
+            "documents",
+            "tasks",
+            "channels",
+            "projects",
+            "organization_invites",
+            "org_memberships",
+        ):
+            await session.execute(
+                text(f"DELETE FROM {table} WHERE organization_id = CAST(:oid AS uuid)").bindparams(oid=oid),
+            )
+        await session.execute(
+            text(
+                "DELETE FROM refresh_tokens WHERE user_id IN"
+                " (SELECT id FROM users WHERE organization_id = CAST(:oid AS uuid))"
+            ).bindparams(oid=oid),
+        )
+        await session.execute(
+            text("DELETE FROM users WHERE organization_id = CAST(:oid AS uuid)").bindparams(oid=oid),
+        )
+        await session.execute(
+            text("DELETE FROM organizations WHERE slug = 'timtimol' OR id = CAST(:oid AS uuid)").bindparams(oid=oid),
+        )
 
         await session.execute(
             text(
-                "INSERT INTO organizations (id, name, slug, plan, settings, language, owner_id)"
+                "INSERT INTO organizations (id, name, slug, plan, settings, language, owner_id,"
+                " pricing_tier, trial_ends_at)"
                 " VALUES (CAST(:oid AS uuid), 'Timtimol AIS', 'timtimol', 'starter',"
-                " CAST(:settings AS jsonb), 'fr', CAST(:owner AS uuid))"
+                " CAST(:settings AS jsonb), 'fr', CAST(:owner AS uuid), 'starter',"
+                " now() + INTERVAL '365 days')"
             ).bindparams(
                 oid=str(ORG_ID),
                 settings=json.dumps({"org_type": "company", "team_size": "6-20"}),
@@ -64,6 +126,13 @@ async def seed() -> None:
                     role=role,
                     ph=hash_password("Timtimol2026!"),
                 ),
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO org_memberships (user_id, organization_id, role)"
+                    " VALUES (CAST(:uid AS uuid), CAST(:oid AS uuid), :role)"
+                    " ON CONFLICT DO NOTHING"
+                ).bindparams(uid=uid, oid=str(ORG_ID), role=role),
             )
 
         await session.execute(

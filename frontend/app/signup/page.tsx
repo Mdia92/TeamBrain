@@ -60,6 +60,8 @@ export default function SignupPage() {
         </form>
         <p className="mt-4 text-center text-sm text-stone-500">
           Déjà inscrit ? <Link href="/login" className="text-amber-700 hover:underline">{t("login")}</Link>
+          {" · "}
+          <Link href="/create" className="text-amber-700 hover:underline">Créer un espace</Link>
         </p>
       </div>
     </div>

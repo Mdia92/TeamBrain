@@ -1,4 +1,4 @@
-"""Auth dependencies — multi-tenant RLS context."""
+"""Auth dependencies — multi-tenant RLS context with multi-org memberships."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import decode_token
+from app.auth.membership import get_membership
 from app.config import settings
 from app.db.session import get_db
 
@@ -38,23 +39,34 @@ async def get_current_user(
     if not user_id or not org_id:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Jeton invalide")
 
-    row = (
-        (
-            await session.execute(
-                text(
-                    "SELECT id, organization_id, full_name, email, role, onboarding_completed"
-                    " FROM users WHERE id = CAST(:id AS uuid) AND is_active = true"
-                ).bindparams(id=user_id),
-            )
-        )
-        .mappings()
-        .first()
+    await session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)").bindparams(uid=user_id),
     )
-    if row is None or str(row["organization_id"]) != org_id:
+
+    row = (
+        await session.execute(
+            text(
+                "SELECT id, organization_id, full_name, email, onboarding_completed"
+                " FROM users WHERE id = CAST(:id AS uuid) AND is_active = true"
+            ).bindparams(id=user_id),
+        )
+    ).mappings().first()
+    if row is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Utilisateur introuvable")
 
+    membership = await get_membership(session, user_id, org_id)
+    if membership is None or not membership.get("is_active"):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Accès à cette organisation refusé")
+
+    role = membership["role"]
+
     await _set_rls_context(session, user_id, org_id)
-    return dict(row)
+    user = dict(row)
+    user["organization_id"] = org_id
+    user["role"] = role
+    user["org_slug"] = membership["slug"]
+    user["org_name"] = membership["name"]
+    return user
 
 
 def require_role(*roles: str):

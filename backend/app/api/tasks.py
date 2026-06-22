@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,8 @@ from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
 from app.events.worker import trigger_on_task_change
+from app.pagination import decode_cursor, encode_cursor
+from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -37,6 +39,8 @@ async def list_tasks(
     project_id: str | None = None,
     status: str | None = None,
     assignee_id: str | None = None,
+    cursor: str | None = None,
+    limit: int = Query(default=50, le=100),
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -47,7 +51,7 @@ async def list_tasks(
         " FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id"
         " WHERE t.organization_id = CAST(:oid AS uuid)"
     )
-    params: dict = {"oid": str(user["organization_id"])}
+    params: dict = {"oid": str(user["organization_id"]), "lim": limit + 1}
     if project_id:
         query += " AND t.project_id = CAST(:pid AS uuid)"
         params["pid"] = project_id
@@ -57,16 +61,31 @@ async def list_tasks(
     if assignee_id:
         query += " AND t.assignee_id = CAST(:aid AS uuid)"
         params["aid"] = assignee_id
-    query += " ORDER BY t.due_date NULLS LAST, t.created_at DESC"
+    if cursor:
+        c = decode_cursor(cursor)
+        query += " AND (COALESCE(t.due_date, '9999-12-31'), t.created_at, t.id) > (COALESCE(CAST(:c_due AS date), '9999-12-31'), CAST(:c_at AS timestamptz), CAST(:c_id AS uuid))"
+        params["c_due"] = c.get("due_date")
+        params["c_at"] = c["created_at"]
+        params["c_id"] = c["id"]
+    query += " ORDER BY t.due_date NULLS LAST, t.created_at DESC, t.id LIMIT :lim"
 
     rows = (await session.execute(text(query).bindparams(**params))).mappings().all()
-    return {"items": [dict(r) for r in rows]}
+    items = [dict(r) for r in rows[:limit]]
+    next_cursor = None
+    if len(rows) > limit and items:
+        last = items[-1]
+        next_cursor = encode_cursor({
+            "due_date": str(last["due_date"]) if last.get("due_date") else None,
+            "created_at": str(last["created_at"]),
+            "id": str(last["id"]),
+        })
+    return {"items": items, "next_cursor": next_cursor, "has_more": len(rows) > limit}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_task(
     body: TaskIn,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     tid = uuid.uuid4()
@@ -97,7 +116,7 @@ async def create_task(
 async def update_task_status(
     task_id: str,
     body: TaskStatusIn,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     result = await session.execute(

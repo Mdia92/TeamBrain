@@ -34,6 +34,25 @@ class MemoryService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def _find_similar(self, org_id: str, vector: list[float], threshold: float = 0.92) -> dict | None:
+        try:
+            row = (
+                await self.session.execute(
+                    text(
+                        "SELECT id, note, strength, 1 - (embedding <=> CAST(:emb AS vector)) AS similarity"
+                        " FROM memory_metadata"
+                        " WHERE organization_id = CAST(:oid AS uuid) AND embedding IS NOT NULL"
+                        " AND resolved_at IS NULL"
+                        " ORDER BY embedding <=> CAST(:emb AS vector) LIMIT 1"
+                    ).bindparams(oid=org_id, emb=vector_to_pg(vector)),
+                )
+            ).mappings().first()
+            if row and float(row["similarity"] or 0) >= threshold:
+                return dict(row)
+        except Exception:
+            pass
+        return None
+
     async def write_memory(
         self,
         *,
@@ -45,14 +64,39 @@ class MemoryService:
         source_module: str,
         source_id: str | None = None,
     ) -> str:
+        vector: list[float] | None = None
+        try:
+            vector, _ = await embed_text(note)
+        except Exception:
+            pass
+
+        if vector:
+            similar = await self._find_similar(org_id, vector)
+            if similar:
+                merged = f"{similar['note']}\n—\n{note}"
+                new_strength = int(similar.get("strength") or 1) + 1
+                await self.session.execute(
+                    text(
+                        "UPDATE memory_metadata SET note = :note, strength = :str,"
+                        " last_reinforced_at = now(), embedding = CAST(:emb AS vector)"
+                        " WHERE id = CAST(:id AS uuid)"
+                    ).bindparams(
+                        note=merged[:4000],
+                        str=new_strength,
+                        emb=vector_to_pg(vector),
+                        id=str(similar["id"]),
+                    ),
+                )
+                return str(similar["id"])
+
         memory_id = str(uuid.uuid4())
         await self.session.execute(
             text(
                 "INSERT INTO memory_metadata"
                 " (id, organization_id, type, entity_type, entity_id, note,"
-                " source_module, source_id)"
+                " source_module, source_id, strength, last_reinforced_at)"
                 " VALUES (CAST(:id AS uuid), CAST(:oid AS uuid), :type, :etype,"
-                " CAST(:eid AS uuid), :note, :smod, CAST(:sid AS uuid))"
+                " CAST(:eid AS uuid), :note, :smod, CAST(:sid AS uuid), 1, now())"
             ).bindparams(
                 id=memory_id,
                 oid=org_id,
@@ -65,16 +109,16 @@ class MemoryService:
             ),
         )
 
-        try:
-            vector, _ = await embed_text(note)
-            await self.session.execute(
-                text(
-                    "UPDATE memory_metadata SET embedding = CAST(:emb AS vector)"
-                    " WHERE id = CAST(:id AS uuid)"
-                ).bindparams(id=memory_id, emb=vector_to_pg(vector)),
-            )
-        except Exception:
-            pass  # never block on embedding failure
+        if vector:
+            try:
+                await self.session.execute(
+                    text(
+                        "UPDATE memory_metadata SET embedding = CAST(:emb AS vector)"
+                        " WHERE id = CAST(:id AS uuid)"
+                    ).bindparams(id=memory_id, emb=vector_to_pg(vector)),
+                )
+            except Exception:
+                pass
 
         return memory_id
 
@@ -100,13 +144,17 @@ class MemoryService:
                 await self.session.execute(
                     text(
                         "SELECT id, type, entity_type, entity_id::text, note,"
-                        " source_module, source_id::text,"
-                        " 1 - (embedding <=> CAST(:emb AS vector)) AS similarity"
+                        " source_module, source_id::text, strength,"
+                        " (1 - (embedding <=> CAST(:emb AS vector)))"
+                        " * CASE WHEN COALESCE(strength, 1) > 1 THEN 1.2"
+                        " WHEN created_at < now() - INTERVAL '6 months'"
+                        " AND COALESCE(strength, 1) = 1 THEN 0.7 ELSE 1.0 END"
+                        " AS similarity"
                         " FROM memory_metadata"
                         " WHERE organization_id = CAST(:oid AS uuid)"
-                        " AND embedding IS NOT NULL"
+                        " AND embedding IS NOT NULL AND resolved_at IS NULL"
                         f"{type_clause}"
-                        " ORDER BY embedding <=> CAST(:emb AS vector)"
+                        " ORDER BY similarity DESC"
                         " LIMIT :lim"
                     ).bindparams(**params),
                 )

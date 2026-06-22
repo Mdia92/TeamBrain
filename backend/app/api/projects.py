@@ -5,13 +5,15 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
+from app.pagination import decode_cursor, encode_cursor
+from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -28,23 +30,41 @@ class ProjectIn(BaseModel):
 
 
 @router.get("")
-async def list_projects(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db)) -> dict:
+async def list_projects(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    cursor: str | None = None,
+    limit: int = Query(default=50, le=100),
+) -> dict:
+    params: dict = {"oid": str(user["organization_id"]), "lim": limit + 1}
+    cursor_clause = ""
+    if cursor:
+        c = decode_cursor(cursor)
+        cursor_clause = " AND (created_at, id) < (CAST(:c_at AS timestamptz), CAST(:c_id AS uuid))"
+        params["c_at"] = c["created_at"]
+        params["c_id"] = c["id"]
     rows = (
         await session.execute(
             text(
                 "SELECT id, name, client_name, description, status, start_date, end_date,"
                 " budget_allocated, budget_spent, project_type, created_at"
-                " FROM projects WHERE organization_id = CAST(:oid AS uuid) ORDER BY created_at DESC"
-            ).bindparams(oid=str(user["organization_id"])),
+                " FROM projects WHERE organization_id = CAST(:oid AS uuid)"
+                f"{cursor_clause} ORDER BY created_at DESC, id DESC LIMIT :lim"
+            ).bindparams(**params),
         )
     ).mappings().all()
-    return {"items": [dict(r) for r in rows]}
+    items = [dict(r) for r in rows[:limit]]
+    next_cursor = None
+    if len(rows) > limit and items:
+        last = items[-1]
+        next_cursor = encode_cursor({"created_at": str(last["created_at"]), "id": str(last["id"])})
+    return {"items": items, "next_cursor": next_cursor, "has_more": len(rows) > limit}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_project(
     body: ProjectIn,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     pid = uuid.uuid4()

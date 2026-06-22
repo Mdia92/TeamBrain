@@ -1,7 +1,8 @@
-"""Authentication — signup, login, refresh, Google OAuth."""
+"""Authentication — signup, login, multi-org switch, onboarding, invites."""
 
 from __future__ import annotations
 
+import json
 import secrets
 import uuid
 from urllib.parse import urlencode
@@ -20,16 +21,20 @@ from app.auth.jwt import (
     refresh_token_is_valid,
     revoke_refresh_token,
 )
+from app.auth.membership import create_membership, get_role_for_org, list_user_orgs
 from app.auth.passwords import hash_password, verify_password
 from app.config import settings
 from app.db.session import get_db
 from app.rate_limit import limiter
+from app.trial import get_org_billing
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 REFRESH_COOKIE = "refresh_token"
 ACCESS_COOKIE = "tb_access"
 COOKIE_PATH = "/api/auth"
+
+ALL_MODULES = ("projects", "field-reports", "meetings", "documents", "calendar", "whatsapp")
 
 
 def _set_access_cookie(response: Response, token: str) -> None:
@@ -56,11 +61,31 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
     )
 
 
+def _slugify(name: str) -> str:
+    base = "".join(c if c.isalnum() else "-" for c in name.lower()).strip("-")
+    return f"{base}-{secrets.token_hex(3)}"
+
+
+def _user_payload(user_id: str, row: dict, org_slug: str) -> dict:
+    return {
+        "id": str(user_id),
+        "full_name": row.get("full_name") or row["full_name"],
+        "email": row["email"],
+        "role": row["role"],
+        "organization_id": str(row["organization_id"]),
+        "org_slug": org_slug,
+        "onboarding_completed": row.get("onboarding_completed", False),
+    }
+
+
 class SignupIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
     full_name: str = Field(min_length=2)
     organization_name: str = Field(min_length=2)
+    industry: str = Field(default="other")
+    team_size: str = Field(default="1-10")
+    primary_language: str = Field(default="fr")
 
 
 class LoginIn(BaseModel):
@@ -68,17 +93,50 @@ class LoginIn(BaseModel):
     password: str
 
 
+class InviteOnboardIn(BaseModel):
+    email: EmailStr
+    role: str = "member"
+
+
 class OnboardingIn(BaseModel):
-    org_type: str
-    team_size: str
-    work_style: str
-    primary_language: str
-    key_pain: str
+    industry: str | None = None
+    team_size: str | None = None
+    primary_language: str | None = None
+    modules: list[str] = Field(default_factory=lambda: list(ALL_MODULES))
+    invites: list[InviteOnboardIn] = Field(default_factory=list)
 
 
-def _slugify(name: str) -> str:
-    base = "".join(c if c.isalnum() else "-" for c in name.lower()).strip("-")
-    return f"{base}-{secrets.token_hex(3)}"
+class SwitchOrgIn(BaseModel):
+    organization_id: str
+
+
+class AcceptInviteSignupIn(BaseModel):
+    token: str
+    full_name: str = Field(min_length=2)
+    email: EmailStr
+    password: str = Field(min_length=8)
+
+
+class AcceptInviteLoginIn(BaseModel):
+    token: str
+    email: EmailStr
+    password: str
+
+
+async def _load_user_session(session: AsyncSession, user_id: str, org_id: str) -> dict | None:
+    row = (
+        await session.execute(
+            text(
+                "SELECT u.id, u.full_name, u.email, u.onboarding_completed, u.organization_id,"
+                " o.slug AS org_slug, om.role"
+                " FROM users u"
+                " JOIN org_memberships om ON om.user_id = u.id AND om.organization_id = CAST(:oid AS uuid)"
+                " JOIN organizations o ON o.id = om.organization_id"
+                " WHERE u.id = CAST(:uid AS uuid) AND om.is_active = true"
+            ).bindparams(uid=user_id, oid=org_id),
+        )
+    ).mappings().first()
+    return dict(row) if row else None
 
 
 @router.post("/signup")
@@ -98,12 +156,35 @@ async def signup(
     org_id = uuid.uuid4()
     user_id = uuid.uuid4()
     slug = _slugify(body.organization_name)
+    lang = body.primary_language if body.primary_language in ("fr", "en", "wo") else "fr"
+    settings_json = {
+        "industry": body.industry,
+        "team_size": body.team_size,
+        "primary_language": body.primary_language,
+        "modules": list(ALL_MODULES),
+        "setup_checklist": {
+            "profile_completed": False,
+            "team_invited": False,
+            "first_project": False,
+            "first_field_report": False,
+            "first_meeting": False,
+        },
+    }
 
     await session.execute(
         text(
-            "INSERT INTO organizations (id, name, slug, plan, settings, language, owner_id)"
-            " VALUES (CAST(:oid AS uuid), :name, :slug, 'free', '{}', 'fr', CAST(:uid AS uuid))"
-        ).bindparams(oid=str(org_id), name=body.organization_name, slug=slug, uid=str(user_id)),
+            "INSERT INTO organizations (id, name, slug, plan, settings, language, owner_id,"
+            " pricing_tier, trial_ends_at)"
+            " VALUES (CAST(:oid AS uuid), :name, :slug, 'free', CAST(:settings AS jsonb), :lang,"
+            " CAST(:uid AS uuid), 'free_trial', now() + INTERVAL '30 days')"
+        ).bindparams(
+            oid=str(org_id),
+            name=body.organization_name,
+            slug=slug,
+            settings=json.dumps(settings_json),
+            lang=lang,
+            uid=str(user_id),
+        ),
     )
     await session.execute(
         text(
@@ -118,6 +199,7 @@ async def signup(
             ph=hash_password(body.password),
         ),
     )
+    await create_membership(session, user_id=str(user_id), org_id=str(org_id), role="owner")
     await session.execute(
         text(
             "INSERT INTO channels (id, organization_id, name, is_direct, created_by)"
@@ -132,15 +214,7 @@ async def signup(
     return {
         "access_token": access,
         "token_type": "bearer",
-        "user": {
-            "id": str(user_id),
-            "full_name": body.full_name,
-            "email": body.email,
-            "role": "owner",
-            "organization_id": str(org_id),
-            "org_slug": slug,
-            "onboarding_completed": False,
-        },
+        "user": _user_payload(str(user_id), {"full_name": body.full_name, "email": body.email, "role": "owner", "organization_id": org_id, "onboarding_completed": False}, slug),
     }
 
 
@@ -153,41 +227,42 @@ async def login(
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     row = (
-        (
-            await session.execute(
-                text(
-                    "SELECT u.id, u.full_name, u.email, u.role, u.password_hash, u.organization_id,"
-                    " u.onboarding_completed, o.slug AS org_slug"
-                    " FROM users u JOIN organizations o ON o.id = u.organization_id"
-                    " WHERE u.email = :e AND u.is_active = true"
-                ).bindparams(e=body.email),
-            )
+        await session.execute(
+            text(
+                "SELECT id, full_name, email, password_hash, organization_id, onboarding_completed"
+                " FROM users WHERE email = :e AND is_active = true"
+            ).bindparams(e=body.email),
         )
-        .mappings()
-        .first()
-    )
-    if (
-        row is None
-        or not row["password_hash"]
-        or not verify_password(body.password, row["password_hash"])
-    ):
+    ).mappings().first()
+    if row is None or not row["password_hash"] or not verify_password(body.password, row["password_hash"]):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Identifiants invalides")
 
-    access = create_access_token(row["id"], row["organization_id"], row["role"])
+    org_id = str(row["organization_id"])
+    role = await get_role_for_org(session, str(row["id"]), org_id)
+    if not role:
+        orgs = await list_user_orgs(session, str(row["id"]))
+        if not orgs:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Aucune organisation active")
+        org_id = str(orgs[0]["id"])
+        role = orgs[0]["role"]
+        await session.execute(
+            text("UPDATE users SET organization_id = CAST(:oid AS uuid) WHERE id = CAST(:uid AS uuid)").bindparams(
+                oid=org_id, uid=str(row["id"])
+            ),
+        )
+        await session.commit()
+
+    session_row = await _load_user_session(session, str(row["id"]), org_id)
+    if not session_row:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session invalide")
+
+    access = create_access_token(row["id"], org_id, role or "member")
     refresh = await create_refresh_token(session, row["id"], ip=request.client.host if request.client else None)
     _set_refresh_cookie(response, refresh)
     return {
         "access_token": access,
         "token_type": "bearer",
-        "user": {
-            "id": str(row["id"]),
-            "full_name": row["full_name"],
-            "email": row["email"],
-            "role": row["role"],
-            "organization_id": str(row["organization_id"]),
-            "org_slug": row["org_slug"],
-            "onboarding_completed": row["onboarding_completed"],
-        },
+        "user": _user_payload(str(row["id"]), {**dict(row), "role": role, "organization_id": org_id}, session_row["org_slug"]),
     }
 
 
@@ -206,21 +281,23 @@ async def refresh(
 
     user_id = payload["sub"]
     row = (
-        (
-            await session.execute(
-                text(
-                    "SELECT id, role, organization_id FROM users WHERE id = CAST(:id AS uuid)"
-                ).bindparams(id=user_id),
-            )
+        await session.execute(
+            text("SELECT id, organization_id FROM users WHERE id = CAST(:id AS uuid)").bindparams(id=user_id),
         )
-        .mappings()
-        .first()
-    )
+    ).mappings().first()
     if row is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Utilisateur introuvable")
 
+    org_id = str(row["organization_id"])
+    role = await get_role_for_org(session, user_id, org_id)
+    if not role:
+        orgs = await list_user_orgs(session, user_id)
+        if orgs:
+            org_id = str(orgs[0]["id"])
+            role = orgs[0]["role"]
+
     await revoke_refresh_token(session, token)
-    access = create_access_token(row["id"], row["organization_id"], row["role"])
+    access = create_access_token(row["id"], org_id, role or "member")
     new_refresh = await create_refresh_token(session, row["id"], ip=request.client.host if request.client else None)
     _set_refresh_cookie(response, new_refresh)
     return {"access_token": access, "token_type": "bearer"}
@@ -241,26 +318,69 @@ async def logout(
 @router.get("/me")
 async def me(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db)) -> dict:
     org = (
-        (
-            await session.execute(
-                text("SELECT slug, name, plan, settings FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(
-                    oid=str(user["organization_id"])
-                ),
-            )
+        await session.execute(
+            text(
+                "SELECT slug, name, plan, settings, pricing_tier, trial_ends_at"
+                " FROM organizations WHERE id = CAST(:oid AS uuid)"
+            ).bindparams(oid=str(user["organization_id"])),
         )
-        .mappings()
-        .first()
-    )
+    ).mappings().first()
+    billing = await get_org_billing(session, str(user["organization_id"]))
+    orgs = await list_user_orgs(session, str(user["id"]))
     return {
         "id": str(user["id"]),
         "full_name": user["full_name"],
         "email": user["email"],
         "role": user["role"],
         "organization_id": str(user["organization_id"]),
-        "org_slug": org["slug"] if org else "",
-        "org_name": org["name"] if org else "",
+        "org_slug": org["slug"] if org else user.get("org_slug", ""),
+        "org_name": org["name"] if org else user.get("org_name", ""),
         "onboarding_completed": user["onboarding_completed"],
         "settings": org["settings"] if org else {},
+        "organizations": [
+            {"id": str(o["id"]), "name": o["name"], "slug": o["slug"], "role": o["role"]}
+            for o in orgs
+        ],
+        "billing": billing,
+    }
+
+
+@router.get("/orgs")
+async def list_orgs(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db)) -> dict:
+    orgs = await list_user_orgs(session, str(user["id"]))
+    return {
+        "items": [
+            {"id": str(o["id"]), "name": o["name"], "slug": o["slug"], "role": o["role"]}
+            for o in orgs
+        ],
+    }
+
+
+@router.post("/switch-org")
+async def switch_org(
+    body: SwitchOrgIn,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    role = await get_role_for_org(session, str(user["id"]), body.organization_id)
+    if not role:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Vous n'appartenez pas à cette organisation")
+    await session.execute(
+        text("UPDATE users SET organization_id = CAST(:oid AS uuid) WHERE id = CAST(:uid AS uuid)").bindparams(
+            oid=body.organization_id, uid=str(user["id"])
+        ),
+    )
+    await session.commit()
+    session_row = await _load_user_session(session, str(user["id"]), body.organization_id)
+    access = create_access_token(user["id"], body.organization_id, role)
+    return {
+        "access_token": access,
+        "token_type": "bearer",
+        "user": _user_payload(
+            str(user["id"]),
+            {**user, "role": role, "organization_id": body.organization_id},
+            session_row["org_slug"] if session_row else "",
+        ),
     }
 
 
@@ -270,24 +390,71 @@ async def complete_onboarding(
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    import json
+    org_row = (
+        await session.execute(
+            text("SELECT settings FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(
+                oid=str(user["organization_id"])
+            ),
+        )
+    ).mappings().first()
+    existing = org_row["settings"] if org_row and org_row["settings"] else {}
+    if isinstance(existing, str):
+        existing = json.loads(existing)
 
+    modules = [m for m in body.modules if m in ALL_MODULES] or list(ALL_MODULES)
     settings_json = {
-        "org_type": body.org_type,
-        "team_size": body.team_size,
-        "work_style": body.work_style,
-        "primary_language": body.primary_language,
-        "key_pain": body.key_pain,
+        **existing,
+        "industry": body.industry or existing.get("industry", "other"),
+        "team_size": body.team_size or existing.get("team_size", "1-10"),
+        "primary_language": body.primary_language or existing.get("primary_language", "fr"),
+        "modules": modules,
+        "setup_checklist": existing.get(
+            "setup_checklist",
+            {
+                "profile_completed": True,
+                "team_invited": False,
+                "first_project": False,
+                "first_field_report": False,
+                "first_meeting": False,
+            },
+        ),
     }
+    settings_json["setup_checklist"]["profile_completed"] = True
+    lang = body.primary_language or existing.get("primary_language", "fr")
+    if lang == "wo":
+        lang = "fr"
+
     await session.execute(
         text(
             "UPDATE organizations SET settings = CAST(:s AS jsonb), language = :lang"
             " WHERE id = CAST(:oid AS uuid)"
-        ).bindparams(
-            s=json.dumps(settings_json),
-            lang=body.primary_language if body.primary_language != "both" else "fr",
-            oid=str(user["organization_id"]),
-        ),
+        ).bindparams(s=json.dumps(settings_json), lang=lang if lang in ("fr", "en") else "fr", oid=str(user["organization_id"])),
+    )
+
+    for inv in body.invites:
+        if inv.role not in ("admin", "manager", "member", "field_agent"):
+            continue
+        token = secrets.token_urlsafe(32)
+        await session.execute(
+            text(
+                "INSERT INTO organization_invites (id, organization_id, email, role, token, expires_at, invited_by)"
+                " VALUES (gen_random_uuid(), CAST(:oid AS uuid), :email, :role, :token,"
+                " now() + INTERVAL '7 days', CAST(:uid AS uuid))"
+            ).bindparams(
+                oid=str(user["organization_id"]),
+                email=inv.email,
+                role=inv.role,
+                token=token,
+                uid=str(user["id"]),
+            ),
+        )
+    if body.invites:
+        settings_json["setup_checklist"]["team_invited"] = True
+
+    await session.execute(
+        text(
+            "UPDATE organizations SET settings = CAST(:s AS jsonb) WHERE id = CAST(:oid AS uuid)"
+        ).bindparams(s=json.dumps(settings_json), oid=str(user["organization_id"])),
     )
     await session.execute(
         text("UPDATE users SET onboarding_completed = true WHERE id = CAST(:uid AS uuid)").bindparams(
@@ -296,6 +463,154 @@ async def complete_onboarding(
     )
     await session.commit()
     return {"status": "completed", "settings": settings_json}
+
+
+@router.get("/invite/{token}")
+async def preview_invite(token: str, session: AsyncSession = Depends(get_db)) -> dict:
+    row = (
+        await session.execute(
+            text(
+                "SELECT i.email, i.role, i.expires_at, o.name AS org_name, o.slug,"
+                " u.full_name AS inviter_name"
+                " FROM organization_invites i"
+                " JOIN organizations o ON o.id = i.organization_id"
+                " LEFT JOIN users u ON u.id = i.invited_by"
+                " WHERE i.token = :token AND i.accepted_at IS NULL"
+            ).bindparams(token=token),
+        )
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation invalide ou expirée")
+    return dict(row)
+
+
+@router.post("/invite/accept-signup")
+@limiter.limit("5/minute")
+async def accept_invite_signup(
+    request: Request,
+    response: Response,
+    body: AcceptInviteSignupIn,
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    invite = (
+        await session.execute(
+            text(
+                "SELECT id, organization_id, email, role FROM organization_invites"
+                " WHERE token = :token AND accepted_at IS NULL AND expires_at > now()"
+            ).bindparams(token=body.token),
+        )
+    ).mappings().first()
+    if not invite:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation invalide ou expirée")
+    if body.email.lower() != invite["email"].lower():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "L'email ne correspond pas à l'invitation")
+
+    existing = (
+        await session.execute(text("SELECT 1 FROM users WHERE email = :e").bindparams(e=body.email))
+    ).first()
+    if existing:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Compte existant — connectez-vous pour accepter")
+
+    user_id = uuid.uuid4()
+    org_id = str(invite["organization_id"])
+    await session.execute(
+        text(
+            "INSERT INTO users (id, organization_id, full_name, email, role, password_hash,"
+            " onboarding_completed) VALUES (CAST(:uid AS uuid), CAST(:oid AS uuid), :name, :email,"
+            " :role, :ph, true)"
+        ).bindparams(
+            uid=str(user_id),
+            oid=org_id,
+            name=body.full_name,
+            email=body.email,
+            role=invite["role"],
+            ph=hash_password(body.password),
+        ),
+    )
+    await create_membership(session, user_id=str(user_id), org_id=org_id, role=invite["role"])
+    await session.execute(
+        text(
+            "UPDATE organization_invites SET accepted_at = now() WHERE id = CAST(:iid AS uuid)"
+        ).bindparams(iid=str(invite["id"])),
+    )
+    slug = (
+        await session.execute(
+            text("SELECT slug FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(oid=org_id),
+        )
+    ).scalar()
+    await session.commit()
+
+    access = create_access_token(user_id, org_id, invite["role"])
+    refresh = await create_refresh_token(session, user_id, ip=request.client.host if request.client else None)
+    _set_refresh_cookie(response, refresh)
+    return {
+        "access_token": access,
+        "token_type": "bearer",
+        "user": _user_payload(str(user_id), {"full_name": body.full_name, "email": body.email, "role": invite["role"], "organization_id": org_id, "onboarding_completed": True}, slug or ""),
+    }
+
+
+@router.post("/invite/accept-login")
+@limiter.limit("10/minute")
+async def accept_invite_login(
+    request: Request,
+    response: Response,
+    body: AcceptInviteLoginIn,
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    invite = (
+        await session.execute(
+            text(
+                "SELECT id, organization_id, email, role FROM organization_invites"
+                " WHERE token = :token AND accepted_at IS NULL AND expires_at > now()"
+            ).bindparams(token=body.token),
+        )
+    ).mappings().first()
+    if not invite:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation invalide ou expirée")
+
+    row = (
+        await session.execute(
+            text(
+                "SELECT id, full_name, email, password_hash, onboarding_completed"
+                " FROM users WHERE email = :e AND is_active = true"
+            ).bindparams(e=body.email),
+        )
+    ).mappings().first()
+    if row is None or not verify_password(body.password, row["password_hash"]):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Identifiants invalides")
+
+    org_id = str(invite["organization_id"])
+    await create_membership(session, user_id=str(row["id"]), org_id=org_id, role=invite["role"])
+    await session.execute(
+        text(
+            "UPDATE organization_invites SET accepted_at = now() WHERE id = CAST(:iid AS uuid)"
+        ).bindparams(iid=str(invite["id"])),
+    )
+    await session.execute(
+        text("UPDATE users SET organization_id = CAST(:oid AS uuid) WHERE id = CAST(:uid AS uuid)").bindparams(
+            oid=org_id, uid=str(row["id"])
+        ),
+    )
+    slug = (
+        await session.execute(
+            text("SELECT slug FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(oid=org_id),
+        )
+    ).scalar()
+    await session.commit()
+
+    access = create_access_token(row["id"], org_id, invite["role"])
+    refresh = await create_refresh_token(session, row["id"], ip=request.client.host if request.client else None)
+    _set_refresh_cookie(response, refresh)
+    return {
+        "access_token": access,
+        "token_type": "bearer",
+        "user": _user_payload(
+            str(row["id"]),
+            {**dict(row), "role": invite["role"], "organization_id": org_id},
+            slug or "",
+        ),
+    }
 
 
 @router.get("/google")
@@ -349,18 +664,14 @@ async def google_oauth_callback(
     google_sub = profile.get("sub")
 
     row = (
-        (
-            await session.execute(
-                text(
-                    "SELECT u.id, u.role, u.organization_id, o.slug FROM users u"
-                    " JOIN organizations o ON o.id = u.organization_id"
-                    " WHERE u.email = :e OR u.google_sub = :gs"
-                ).bindparams(e=email, gs=google_sub),
-            )
+        await session.execute(
+            text(
+                "SELECT u.id, u.organization_id, o.slug FROM users u"
+                " JOIN organizations o ON o.id = u.organization_id"
+                " WHERE u.email = :e OR u.google_sub = :gs"
+            ).bindparams(e=email, gs=google_sub),
         )
-        .mappings()
-        .first()
-    )
+    ).mappings().first()
 
     if row is None:
         raise HTTPException(
@@ -368,6 +679,7 @@ async def google_oauth_callback(
             "Aucun compte associé. Inscrivez-vous d'abord avec cet email.",
         )
 
+    role = await get_role_for_org(session, str(row["id"]), str(row["organization_id"])) or "member"
     await session.execute(
         text("UPDATE users SET google_sub = :gs WHERE id = CAST(:uid AS uuid)").bindparams(
             gs=google_sub, uid=str(row["id"])
@@ -375,7 +687,7 @@ async def google_oauth_callback(
     )
     await session.commit()
 
-    access = create_access_token(row["id"], row["organization_id"], row["role"])
+    access = create_access_token(row["id"], row["organization_id"], role)
     refresh = await create_refresh_token(session, row["id"], ip=request.client.host if request.client else None)
     _set_refresh_cookie(response, refresh)
     _set_access_cookie(response, access)
