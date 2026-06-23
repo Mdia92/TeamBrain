@@ -6,6 +6,7 @@ import { FormEvent, useState } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { t } from "@/app/lib/i18n";
 import * as authApi from "@/app/lib/auth-api";
+import { MarketingFooter } from "@/components/marketing-shell";
 
 const INDUSTRIES = [
   { value: "ngo", label: "ONG" },
@@ -125,8 +126,9 @@ export default function CreateOrgPage() {
   const modulesStep = isLoggedIn ? 2 : 3;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4 dark:bg-slate-950">
-      <div className="w-full max-w-[600px] animate-fade-in rounded-modal border border-slate-200 bg-white p-8 shadow-dropdown dark:border-slate-800 dark:bg-slate-900">
+    <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
+      <div className="flex flex-1 items-center justify-center p-4">
+        <div className="w-full max-w-[600px] animate-fade-in rounded-modal border border-slate-200 bg-white p-8 shadow-dropdown dark:border-slate-800 dark:bg-slate-900">
         {/* Step indicator */}
         <div className="mb-8 flex items-center justify-between">
           {steps.map((label, i) => (
@@ -320,7 +322,9 @@ export default function CreateOrgPage() {
             </button>
           </div>
         </form>
+        </div>
       </div>
+      <MarketingFooter />
     </div>
   );
 }

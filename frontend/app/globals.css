@@ -64,4 +64,23 @@ body {
     content: "";
     @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent dark:via-white/10;
   }
+
+  .landing-mesh {
+    background:
+      radial-gradient(ellipse 80% 60% at 20% 40%, rgba(79, 70, 229, 0.45) 0%, transparent 55%),
+      radial-gradient(ellipse 70% 50% at 80% 20%, rgba(99, 102, 241, 0.35) 0%, transparent 50%),
+      radial-gradient(ellipse 60% 55% at 55% 85%, rgba(67, 56, 202, 0.4) 0%, transparent 55%);
+    background-size: 200% 200%;
+    animation: mesh-drift 22s ease-in-out infinite;
+  }
+}
+
+@keyframes mesh-drift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
