@@ -43,10 +43,19 @@ def get_mcp_registry() -> MCPRegistry:
     global _registry
     if _registry is None:
         _registry = MCPRegistry()
-        from app.mcp import calendar_tools, document_tools, memory_tools, whatsapp_tools
+        from app.mcp import (
+            calendar_tools,
+            document_tools,
+            meetings_tools,
+            memory_tools,
+            projects_tools,
+            whatsapp_tools,
+        )
 
         memory_tools.register(_registry)
         calendar_tools.register(_registry)
         document_tools.register(_registry)
+        meetings_tools.register(_registry)
+        projects_tools.register(_registry)
         whatsapp_tools.register(_registry)
     return _registry

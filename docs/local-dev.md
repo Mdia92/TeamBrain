@@ -57,6 +57,24 @@ npm run dev   # serves on http://localhost:3010
 - Email: `amadou@timtimol.sn`
 - Password: `Timtimol2026!`
 
+## Verification (after changes)
+
+With backend on **8010**:
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+pytest -q
+ruff check app tests scripts
+python scripts/e2e_api_sweep.py   # signup → onboarding → invite → project/tasks → assistant → memory
+alembic upgrade head              # includes 006_junction_rls for project_members RLS
+```
+
+```powershell
+cd frontend
+npm run build
+```
+
 ## Port conflicts
 
 If `3010` or `8010` are taken, pick free ports and update:

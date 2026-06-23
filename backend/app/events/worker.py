@@ -7,9 +7,9 @@ from datetime import UTC, date, datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.job_dedup import try_acquire_job_key
 from app.agents.memory_service import MemoryService
 from app.delivery.whatsapp import whatsapp_client
+from app.job_dedup import try_acquire_job_key
 
 
 async def job_overdue_task_alerts(session: AsyncSession) -> int:

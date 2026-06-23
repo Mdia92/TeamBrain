@@ -64,9 +64,11 @@ async def _plan(question: str) -> AgentPlan:
         m = re.search(pattern, lower, re.I)
         if m:
             name = m.group(1).capitalize()
-            msg = question
-            if "rapport" in lower:
-                msg = "Rappel TeamBrain: merci de soumettre votre rapport terrain cette semaine."
+            msg = (
+                "Rappel TeamBrain: merci de soumettre votre rapport terrain cette semaine."
+                if "rapport" in lower or "terrain" in lower
+                else question
+            )
             steps.append(
                 {
                     "action": "act",
@@ -76,8 +78,25 @@ async def _plan(question: str) -> AgentPlan:
             )
             return AgentPlan(steps=steps, intent="reminder")
 
+    m2 = re.search(r"rappel(?:le|er)?\s+(?:à|a)\s+(.+?)\s+(?:son|sa|leur)", lower)
+    if m2:
+        name = m2.group(1).strip().title()
+        msg = (
+            "Rappel TeamBrain: merci de soumettre votre rapport terrain cette semaine."
+            if "rapport" in lower or "terrain" in lower
+            else question
+        )
+        steps.append(
+            {
+                "action": "act",
+                "tool": "whatsapp_send_reminder",
+                "args": {"recipient_name": name, "message": msg},
+            }
+        )
+        return AgentPlan(steps=steps, intent="reminder")
+
     if any(re.search(p, lower) for p in CREATE_TASK_PATTERNS):
-        steps.append({"action": "act", "tool": "create_task", "args": {"title": question[:200]}})
+        steps.append({"action": "act", "tool": "tasks_create", "args": {"title": question[:200]}})
         return AgentPlan(steps=steps, intent="create_task")
 
     if "calendrier" in lower or "événement" in lower or "event" in lower:
@@ -86,8 +105,16 @@ async def _plan(question: str) -> AgentPlan:
     if "document" in lower:
         steps.append({"action": "retrieve", "tool": "documents_search", "query": question})
 
-    if any(kw in lower for kw in ("qui doit", "retard", "engagement", "responsable")):
+    if any(kw in lower for kw in ("qui doit", "retard", "engagement", "responsable", "livrer")):
         steps.append({"action": "retrieve", "tool": "memory_accountability", "args": {}})
+
+    if any(kw in lower for kw in ("décision", "decisions", "décidé")):
+        steps.append({"action": "retrieve", "tool": "meetings_recent_decisions", "args": {"limit": 10}})
+
+    if "où en est" in lower or re.search(r"projet\s+.+", lower):
+        proj_match = re.search(r"projet\s+(.+?)(?:\?|$)", question, re.I)
+        pname = proj_match.group(1).strip() if proj_match else question
+        steps.append({"action": "retrieve", "tool": "projects_status", "args": {"name": pname}})
 
     return AgentPlan(steps=steps, intent="answer")
 
@@ -115,6 +142,7 @@ async def run_agent(
     all_sources: list[str] = []
     actions_taken: list[str] = []
     strong_hits = 0
+    has_structured_data = False
 
     for step in plan.steps:
         if step["action"] == "retrieve":
@@ -122,6 +150,8 @@ async def run_agent(
             args = step.get("args", {})
             if tool == "memory_search":
                 args = {"query": step.get("query", question), "limit": 12}
+            elif tool == "documents_search":
+                args = {"query": step.get("query", question)}
             result = await mcp.call_tool(tool, args, session=session, org_id=org_id, user_id=user_id)
             if result.success and result.content:
                 if tool == "memory_search":
@@ -135,30 +165,47 @@ async def run_agent(
                             f"(score={score:.2f}) {item.get('note')}"
                         )
                 elif tool == "memory_accountability":
+                    people = result.content.get("people", [])
+                    if people:
+                        has_structured_data = True
+                        strong_hits += 1
                     context_parts.append(json.dumps(result.content, default=str))
                 elif tool == "documents_search":
                     for doc in result.content.get("items", []):
                         context_parts.append(f"[document:{doc['id']}] {doc.get('title')}: {doc.get('ai_summary', '')}")
                 elif tool == "calendar_list_events":
-                    context_parts.append(json.dumps(result.content.get("items", []), default=str))
+                    items = result.content.get("items", [])
+                    if items:
+                        has_structured_data = True
+                    context_parts.append(json.dumps(items, default=str))
+                elif tool == "meetings_recent_decisions":
+                    decisions = result.content.get("decisions", [])
+                    if decisions:
+                        has_structured_data = True
+                        strong_hits += 1
+                    context_parts.append(json.dumps(decisions, default=str))
+                elif tool == "projects_status":
+                    has_structured_data = True
+                    strong_hits += 1
+                    context_parts.append(json.dumps(result.content, default=str))
+                elif tool == "projects_list":
+                    if result.content.get("projects"):
+                        has_structured_data = True
+                    context_parts.append(json.dumps(result.content, default=str))
                 all_sources.extend(result.sources)
 
         elif step["action"] == "act":
             tool = step["tool"]
             args = step.get("args", {})
-            if tool == "create_task":
-                if plan.intent == "create_task":
-                    tid = await _create_task(session, org_id, user_id, args.get("title", "Nouvelle tâche"))
-                    if tid:
-                        actions_taken.append(f"Tâche créée: {tid}")
-                        all_sources.append(f"task:{tid}")
-                continue
             result = await mcp.call_tool(tool, args, session=session, org_id=org_id, user_id=user_id)
             if result.success:
-                actions_taken.append(f"{tool}: {result.content}")
+                if tool == "tasks_create" and result.content.get("task_id"):
+                    actions_taken.append(f"Tâche créée: {result.content['task_id']}")
+                else:
+                    actions_taken.append(f"{tool}: {result.content}")
                 all_sources.extend(result.sources)
             else:
-                actions_taken.append(f"{tool} échoué: {result.error}")
+                actions_taken.append(f"{tool} échoué: {result.error or 'erreur inconnue'}")
 
     # Live project rows (grounding)
     project_rows = (
@@ -173,7 +220,7 @@ async def run_agent(
 
     context = "\n".join(context_parts) if context_parts else ""
 
-    if strong_hits == 0 and not project_rows and plan.intent == "answer":
+    if strong_hits == 0 and not project_rows and not has_structured_data and plan.intent == "answer":
         weak = [s for s in all_sources if s][:3]
         prefix = (
             "Je n'ai pas assez d'informations pour répondre avec certitude. "
@@ -230,40 +277,3 @@ async def run_agent(
         actions_taken=actions_taken,
         grounded=True,
     )
-
-
-async def _create_task(
-    session: AsyncSession,
-    org_id: str,
-    user_id: str | None,
-    title: str,
-) -> str | None:
-    if not user_id:
-        return None
-    import uuid
-
-    project = (
-        await session.execute(
-            text(
-                "SELECT id FROM projects WHERE organization_id = CAST(:oid AS uuid) LIMIT 1"
-            ).bindparams(oid=org_id),
-        )
-    ).first()
-    if not project:
-        return None
-    tid = str(uuid.uuid4())
-    await session.execute(
-        text(
-            "INSERT INTO tasks (id, organization_id, project_id, title, status, source, created_by)"
-            " VALUES (CAST(:tid AS uuid), CAST(:oid AS uuid), CAST(:pid AS uuid), :title,"
-            " 'todo', 'ai_suggestion', CAST(:uid AS uuid))"
-        ).bindparams(
-            tid=tid,
-            oid=org_id,
-            pid=str(project[0]),
-            title=title[:500],
-            uid=user_id,
-        ),
-    )
-    await session.commit()
-    return tid

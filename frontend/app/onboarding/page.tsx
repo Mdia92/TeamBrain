@@ -1,11 +1,11 @@
 "use client";
 
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { t } from "@/app/lib/i18n";
 
-export default function OnboardingPage() {
+function OnboardingRedirect() {
   const { user, isLoading, refreshUser } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
@@ -33,5 +33,19 @@ export default function OnboardingPage() {
     <div className="flex min-h-screen items-center justify-center">
       <p className="text-stone-500">{t("loading")}</p>
     </div>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-stone-500">{t("loading")}</p>
+        </div>
+      }
+    >
+      <OnboardingRedirect />
+    </Suspense>
   );
 }

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import text
 
@@ -223,7 +223,7 @@ async def seed() -> None:
                 ),
             )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await session.execute(
             text(
                 "INSERT INTO meetings (id, organization_id, project_id, title, date, ai_summary,"

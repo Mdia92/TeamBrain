@@ -110,6 +110,15 @@ class SwitchOrgIn(BaseModel):
     organization_id: str
 
 
+class CreateOrgIn(BaseModel):
+    organization_name: str = Field(min_length=2)
+    industry: str = Field(default="other")
+    team_size: str = Field(default="1-10")
+    primary_language: str = Field(default="fr")
+    modules: list[str] = Field(default_factory=lambda: list(ALL_MODULES))
+    invites: list[InviteOnboardIn] = Field(default_factory=list)
+
+
 class AcceptInviteSignupIn(BaseModel):
     token: str
     full_name: str = Field(min_length=2)
@@ -380,6 +389,92 @@ async def switch_org(
             str(user["id"]),
             {**user, "role": role, "organization_id": body.organization_id},
             session_row["org_slug"] if session_row else "",
+        ),
+    }
+
+
+@router.post("/create-org")
+async def create_org_for_user(
+    body: CreateOrgIn,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    """Logged-in user creates an additional organization (multi-org)."""
+    org_id = uuid.uuid4()
+    slug = _slugify(body.organization_name)
+    lang = body.primary_language if body.primary_language in ("fr", "en", "wo") else "fr"
+    modules = [m for m in body.modules if m in ALL_MODULES] or list(ALL_MODULES)
+    settings_json = {
+        "industry": body.industry,
+        "team_size": body.team_size,
+        "primary_language": body.primary_language,
+        "modules": modules,
+        "setup_checklist": {
+            "profile_completed": True,
+            "team_invited": bool(body.invites),
+            "first_project": False,
+            "first_field_report": False,
+            "first_meeting": False,
+        },
+    }
+    await session.execute(
+        text(
+            "INSERT INTO organizations (id, name, slug, plan, settings, language, owner_id,"
+            " pricing_tier, trial_ends_at)"
+            " VALUES (CAST(:oid AS uuid), :name, :slug, 'free', CAST(:settings AS jsonb), :lang,"
+            " CAST(:uid AS uuid), 'free_trial', now() + INTERVAL '30 days')"
+        ).bindparams(
+            oid=str(org_id),
+            name=body.organization_name,
+            slug=slug,
+            settings=json.dumps(settings_json),
+            lang=lang if lang in ("fr", "en") else "fr",
+            uid=str(user["id"]),
+        ),
+    )
+    await create_membership(session, user_id=str(user["id"]), org_id=str(org_id), role="owner")
+    await session.execute(
+        text(
+            "INSERT INTO channels (id, organization_id, name, is_direct, created_by)"
+            " VALUES (gen_random_uuid(), CAST(:oid AS uuid), 'general', false, CAST(:uid AS uuid))"
+        ).bindparams(oid=str(org_id), uid=str(user["id"])),
+    )
+    await session.execute(
+        text("UPDATE users SET organization_id = CAST(:oid AS uuid) WHERE id = CAST(:uid AS uuid)").bindparams(
+            oid=str(org_id), uid=str(user["id"])
+        ),
+    )
+    for inv in body.invites:
+        if inv.role not in ("admin", "manager", "member", "field_agent"):
+            continue
+        token = secrets.token_urlsafe(32)
+        await session.execute(
+            text(
+                "INSERT INTO organization_invites (id, organization_id, email, role, token, expires_at, invited_by)"
+                " VALUES (gen_random_uuid(), CAST(:oid AS uuid), :email, :role, :token,"
+                " now() + INTERVAL '7 days', CAST(:uid AS uuid))"
+            ).bindparams(
+                oid=str(org_id),
+                email=inv.email,
+                role=inv.role,
+                token=token,
+                uid=str(user["id"]),
+            ),
+        )
+    await session.commit()
+    access = create_access_token(user["id"], org_id, "owner")
+    return {
+        "access_token": access,
+        "token_type": "bearer",
+        "user": _user_payload(
+            str(user["id"]),
+            {
+                **user,
+                "role": "owner",
+                "organization_id": org_id,
+                "onboarding_completed": True,
+            },
+            slug,
         ),
     }
 

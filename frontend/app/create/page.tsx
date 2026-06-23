@@ -49,8 +49,9 @@ const ROLES = [
 type InviteRow = { email: string; role: string };
 
 export default function CreateOrgPage() {
-  const { signup, refreshUser } = useAuth();
+  const { user, signup, refreshUser, applySession } = useAuth();
   const router = useRouter();
+  const isLoggedIn = Boolean(user);
   const [step, setStep] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -70,25 +71,39 @@ export default function CreateOrgPage() {
     setLoading(true);
     setError("");
     try {
-      await signup({
-        organization_name: orgName,
-        full_name: fullName,
-        email,
-        password,
-        industry,
-        team_size: teamSize,
-        primary_language: language,
-      });
       const validInvites = invites.filter((i) => i.email.includes("@"));
-      await authApi.completeOnboarding({
-        industry,
-        team_size: teamSize,
-        primary_language: language,
-        modules,
-        invites: validInvites,
-      });
-      const profile = await refreshUser();
-      router.push(`/${profile?.org_slug ?? "app"}/dashboard`);
+      if (isLoggedIn) {
+        const result = await authApi.createOrg({
+          organization_name: orgName,
+          industry,
+          team_size: teamSize,
+          primary_language: language,
+          modules,
+          invites: validInvites,
+        });
+        applySession(result);
+        const profile = await refreshUser();
+        router.push(`/${profile?.org_slug ?? result.user.org_slug}/dashboard`);
+      } else {
+        await signup({
+          organization_name: orgName,
+          full_name: fullName,
+          email,
+          password,
+          industry,
+          team_size: teamSize,
+          primary_language: language,
+        });
+        await authApi.completeOnboarding({
+          industry,
+          team_size: teamSize,
+          primary_language: language,
+          modules,
+          invites: validInvites,
+        });
+        const profile = await refreshUser();
+        router.push(`/${profile?.org_slug ?? "app"}/dashboard`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur");
     } finally {
@@ -100,7 +115,14 @@ export default function CreateOrgPage() {
     setModules((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
   }
 
-  const steps = ["Organisation", "Compte admin", "Inviter l'équipe", "Modules"];
+  const steps = isLoggedIn
+    ? ["Organisation", "Inviter l'équipe", "Modules"]
+    : ["Organisation", "Compte admin", "Inviter l'équipe", "Modules"];
+
+  const lastStep = steps.length - 1;
+  const adminStep = isLoggedIn ? -1 : 1;
+  const inviteStep = isLoggedIn ? 1 : 2;
+  const modulesStep = isLoggedIn ? 2 : 3;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-stone-50 p-4 dark:bg-stone-950">
@@ -115,7 +137,7 @@ export default function CreateOrgPage() {
           ))}
         </div>
 
-        <form onSubmit={step === 3 ? handleFinish : (e) => { e.preventDefault(); setStep(step + 1); }}>
+        <form onSubmit={step === lastStep ? handleFinish : (e) => { e.preventDefault(); setStep(step + 1); }}>
           {step === 0 && (
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">Créer votre espace</h1>
@@ -167,7 +189,7 @@ export default function CreateOrgPage() {
             </div>
           )}
 
-          {step === 1 && (
+          {step === adminStep && (
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">Compte administrateur</h1>
               <div>
@@ -203,7 +225,7 @@ export default function CreateOrgPage() {
             </div>
           )}
 
-          {step === 2 && (
+          {step === inviteStep && (
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">Inviter l&apos;équipe</h1>
               <p className="text-sm text-stone-500">Optionnel — vous pourrez inviter plus tard.</p>
@@ -245,7 +267,7 @@ export default function CreateOrgPage() {
             </div>
           )}
 
-          {step === 3 && (
+          {step === modulesStep && (
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">Modules actifs</h1>
               <p className="text-sm text-stone-500">Les modules non cochés seront masqués du menu.</p>
@@ -279,7 +301,7 @@ export default function CreateOrgPage() {
               disabled={loading}
               className="rounded-lg bg-amber-700 px-6 py-2 font-medium text-white hover:bg-amber-800 disabled:opacity-50"
             >
-              {loading ? t("loading") : step === 3 ? "Créer l'espace" : t("continue")}
+              {loading ? t("loading") : step === lastStep ? "Créer l'espace" : t("continue")}
             </button>
           </div>
         </form>

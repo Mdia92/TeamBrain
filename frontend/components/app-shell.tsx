@@ -39,7 +39,7 @@ const ALL_NAV = [
   { href: "assistant", label: t("assistant"), icon: Bot, module: null },
 ];
 
-function TrialBanner({ orgSlug }: { orgSlug: string }) {
+function TrialBanner() {
   const { user } = useAuth();
   const billing = user?.billing;
   if (!billing || billing.pricing_tier !== "free_trial") return null;
@@ -131,7 +131,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen flex-col bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
-      <TrialBanner orgSlug={orgSlug} />
+      <TrialBanner />
       <div className="flex flex-1">
         <aside className="flex w-60 flex-col border-r border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900">
           <div className="border-b border-stone-200 p-4 dark:border-stone-800">

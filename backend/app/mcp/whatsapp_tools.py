@@ -37,9 +37,10 @@ async def _send_reminder(*, arguments: dict[str, Any], context: dict[str, Any]) 
     row = (
         await session.execute(
             text(
-                "SELECT id, email, full_name FROM users"
-                " WHERE organization_id = CAST(:oid AS uuid) AND is_active = true"
-                " AND full_name ILIKE :name LIMIT 1"
+                "SELECT u.id, u.email, u.full_name FROM users u"
+                " JOIN org_memberships om ON om.user_id = u.id"
+                " WHERE om.organization_id = CAST(:oid AS uuid) AND om.is_active = true"
+                " AND u.is_active = true AND u.full_name ILIKE :name LIMIT 1"
             ).bindparams(oid=org_id, name=f"%{name}%"),
         )
     ).mappings().first()

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
 from app.pagination import decode_cursor, encode_cursor
@@ -100,6 +101,16 @@ async def create_project(
             "INSERT INTO project_members (id, project_id, user_id, role_in_project)"
             " VALUES (gen_random_uuid(), CAST(:pid AS uuid), CAST(:uid AS uuid), 'lead')"
         ).bindparams(pid=str(pid), uid=str(user["id"])),
+    )
+    brain = MemoryService(session)
+    await brain.write_memory(
+        org_id=oid,
+        type="episodic",
+        entity_type="project",
+        entity_id=str(pid),
+        note=f"Projet créé: {body.name}",
+        source_module="projects",
+        source_id=str(pid),
     )
     await session.commit()
     return {"id": str(pid), "name": body.name}

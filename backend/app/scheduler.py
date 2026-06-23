@@ -6,12 +6,12 @@ import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.db.session import SessionLocal
+from app.events.pattern_job import job_pattern_promotion
 from app.events.worker import (
     job_commitment_reminders,
     job_field_report_gap_alerts,
     job_overdue_task_alerts,
 )
-from app.events.pattern_job import job_pattern_promotion
 
 log = structlog.get_logger("teambrain.scheduler")
 scheduler = AsyncIOScheduler()

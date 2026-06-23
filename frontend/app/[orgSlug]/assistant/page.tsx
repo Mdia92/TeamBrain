@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { apiClient } from "@/app/lib/api";
+import { apiClient, ApiRequestError } from "@/app/lib/api";
 import { t } from "@/app/lib/i18n";
 
 type AssistantAnswer = {
@@ -24,14 +24,19 @@ export default function AssistantPage() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleAsk(e: FormEvent) {
     e.preventDefault();
     if (!question.trim()) return;
     setLoading(true);
+    setError("");
     try {
       const r = await apiClient.post<AssistantAnswer>("/api/assistant/ask", { question });
       setAnswer(r);
+    } catch (err) {
+      setAnswer(null);
+      setError(err instanceof ApiRequestError ? err.message : "Erreur de l'assistant");
     } finally {
       setLoading(false);
     }
@@ -54,6 +59,7 @@ export default function AssistantPage() {
           {loading ? "..." : "Demander"}
         </button>
       </form>
+      {error && <p className="text-sm text-red-600">{error}</p>}
       {answer && (
         <div className="rounded-xl border border-stone-200 bg-white p-6 dark:border-stone-800 dark:bg-stone-900">
           {answer.api_configured === false && (

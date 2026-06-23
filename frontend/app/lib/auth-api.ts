@@ -42,6 +42,17 @@ export function switchOrg(organizationId: string): Promise<LoginResponse> {
   return apiClient.post("/api/auth/switch-org", { organization_id: organizationId });
 }
 
+export function createOrg(data: {
+  organization_name: string;
+  industry?: string;
+  team_size?: string;
+  primary_language?: string;
+  modules?: string[];
+  invites?: { email: string; role: string }[];
+}): Promise<LoginResponse> {
+  return apiClient.post("/api/auth/create-org", data);
+}
+
 export function completeOnboarding(data: {
   industry?: string;
   team_size?: string;

@@ -108,6 +108,16 @@ async def create_task(
             uid=str(user["id"]),
         ),
     )
+    brain = MemoryService(session)
+    await brain.write_memory(
+        org_id=str(user["organization_id"]),
+        type="episodic",
+        entity_type="task",
+        entity_id=str(tid),
+        note=f"Tâche créée: {body.title}",
+        source_module="tasks",
+        source_id=str(tid),
+    )
     await session.commit()
     return {"id": str(tid)}
 

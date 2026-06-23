@@ -50,16 +50,17 @@ async def create_invite(
     iid = uuid.uuid4()
     await session.execute(
         text(
-            "INSERT INTO organization_invites (id, organization_id, email, role, token, expires_at)"
+            "INSERT INTO organization_invites (id, organization_id, email, role, token, expires_at, invited_by)"
             " VALUES (CAST(:iid AS uuid), CAST(:oid AS uuid), :email, :role, :token,"
-            " now() + INTERVAL '7 days')"
+            " now() + INTERVAL '7 days', CAST(:uid AS uuid))"
         ).bindparams(
             iid=str(iid),
             oid=str(user["organization_id"]),
             email=body.email,
             role=body.role,
             token=token,
+            uid=str(user["id"]),
         ),
     )
     await session.commit()
-    return {"id": str(iid), "email": body.email, "role": body.role, "token": token}
+    return {"id": str(iid), "email": body.email, "role": body.role, "token": token, "invite_url": f"/invite/{token}"}
