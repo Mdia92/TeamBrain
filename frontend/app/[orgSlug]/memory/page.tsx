@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { Brain, Search } from "lucide-react";
 import { apiClient } from "@/app/lib/api";
 import { cn } from "@/app/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { CardSkeleton, Skeleton } from "@/components/ui/skeleton";
+import { TbCard } from "@/components/ui/tb-card";
+import { useGsapStagger } from "@/hooks/use-gsap-stagger";
 
 type MemoryItem = {
   id: string;
@@ -38,6 +41,9 @@ function StrengthBar({ strength }: { strength: number }) {
 }
 
 export default function MemoryPage() {
+  const params = useParams();
+  const router = useRouter();
+  const orgSlug = params.orgSlug as string;
   const [timeline, setTimeline] = useState<MemoryItem[]>([]);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [query, setQuery] = useState("");
@@ -90,6 +96,9 @@ export default function MemoryPage() {
     return () => clearTimeout(t);
   }, [query, runSearch]);
 
+  const displayItems = query.trim() ? searchResults : timeline;
+  const timelineRef = useGsapStagger<HTMLOListElement>([displayItems.length, loading]);
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -100,7 +109,15 @@ export default function MemoryPage() {
     );
   }
 
-  const displayItems = query.trim() ? searchResults : timeline;
+  function openMemory(item: MemoryItem) {
+    const mod = item.source_module;
+    if (mod === "tasks" || mod === "projects") router.push(`/${orgSlug}/tasks`);
+    else if (mod === "documents" || mod === "field_reports") router.push(`/${orgSlug}/documents`);
+    else if (mod === "meetings") router.push(`/${orgSlug}/meetings`);
+    else if (mod === "messages") router.push(`/${orgSlug}/messages`);
+    else if (mod === "calendar") router.push(`/${orgSlug}/calendar`);
+    else router.push(`/${orgSlug}/assistant`);
+  }
 
   return (
     <div className="space-y-8">
@@ -127,15 +144,12 @@ export default function MemoryPage() {
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Motifs récurrents</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {patterns.map((p) => (
-              <div
-                key={p.id}
-                className="tb-card border-l-4 border-l-accent bg-amber-50/30 p-4 dark:bg-amber-950/10"
-              >
+              <TbCard key={p.id} stagger interactive onClick={() => router.push(`/${orgSlug}/assistant`)} className="border-l-4 border-l-accent bg-amber-50/30 p-4 dark:bg-amber-950/10">
                 <p className="text-sm">{p.note}</p>
                 <div className="mt-3">
                   <StrengthBar strength={p.strength} />
                 </div>
-              </div>
+              </TbCard>
             ))}
           </div>
         </section>
@@ -152,11 +166,11 @@ export default function MemoryPage() {
             description="Les actions de votre équipe alimenteront automatiquement la mémoire organisationnelle."
           />
         ) : (
-          <ol className="relative border-l-2 border-indigo-200 pl-6 dark:border-indigo-900">
+          <ol ref={timelineRef} className="relative border-l-2 border-indigo-200 pl-6 dark:border-indigo-900">
             {displayItems.map((m) => (
-              <li key={m.id} className="relative mb-8 last:mb-0">
+              <li key={m.id} className="relative mb-8 last:mb-0 gsap-stagger-item">
                 <span className="absolute -left-[1.6rem] top-1 flex h-3 w-3 rounded-full bg-primary ring-4 ring-white dark:ring-slate-950" />
-                <div className="tb-card p-4">
+                <TbCard interactive onClick={() => openMemory(m)} className="p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                       <span className="rounded-full bg-indigo-50 px-2 py-0.5 font-medium uppercase text-primary dark:bg-indigo-950">
@@ -170,7 +184,7 @@ export default function MemoryPage() {
                     <StrengthBar strength={m.strength || 1} />
                   </div>
                   <p className="mt-2 text-sm leading-relaxed text-slate-800 dark:text-slate-200">{m.note}</p>
-                </div>
+                </TbCard>
               </li>
             ))}
           </ol>

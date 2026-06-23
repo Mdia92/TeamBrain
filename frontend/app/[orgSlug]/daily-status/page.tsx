@@ -10,6 +10,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { CardSkeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { TbCard } from "@/components/ui/tb-card";
+import { DetailDrawer } from "@/components/ui/detail-drawer";
+import { useGsapStagger } from "@/hooks/use-gsap-stagger";
 
 type StatusItem = {
   id: string;
@@ -43,6 +46,8 @@ export default function DailyStatusPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [selected, setSelected] = useState<StatusItem | null>(null);
+  const listRef = useGsapStagger<HTMLOListElement>([items.length]);
 
   const load = () =>
     apiClient
@@ -133,11 +138,11 @@ export default function DailyStatusPage() {
           }
         />
       ) : (
-        <ol className="relative border-l-2 border-indigo-200 pl-6 dark:border-indigo-900">
+        <ol ref={listRef} className="relative border-l-2 border-indigo-200 pl-6 dark:border-indigo-900">
           {items.map((item) => (
-            <li key={item.id} className="relative mb-8 last:mb-0">
+            <li key={item.id} className="relative mb-8 last:mb-0 gsap-stagger-item">
               <span className="absolute -left-[1.6rem] top-1 flex h-3 w-3 rounded-full bg-primary ring-4 ring-white dark:ring-slate-950" />
-              <article className="tb-card p-4">
+              <TbCard interactive onClick={() => setSelected(item)} className="p-4">
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-primary dark:bg-indigo-950">
                     {initials(item.user_name)}
@@ -155,11 +160,21 @@ export default function DailyStatusPage() {
                     )}
                   </div>
                 </div>
-              </article>
+              </TbCard>
             </li>
           ))}
         </ol>
       )}
+
+      <DetailDrawer open={Boolean(selected)} onClose={() => setSelected(null)} title={selected?.user_name ?? "Statut"}>
+        {selected && (
+          <div className="space-y-3 text-sm">
+            <SourceBadge source={selected.source} />
+            <p className="leading-relaxed">{selected.status_text}</p>
+            {selected.location_name && <p className="text-slate-500">{selected.location_name}</p>}
+          </div>
+        )}
+      </DetailDrawer>
     </div>
   );
 }

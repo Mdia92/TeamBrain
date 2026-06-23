@@ -22,6 +22,7 @@ import { useState } from "react";
 import { apiClient } from "@/app/lib/api";
 import { cn } from "@/app/lib/utils";
 import { initials } from "@/components/ui/avatar";
+import { TbCard } from "@/components/ui/tb-card";
 
 export type KanbanTask = {
   id: string;
@@ -79,12 +80,26 @@ function TaskProvenance({ task, orgSlug }: { task: KanbanTask; orgSlug?: string 
   return null;
 }
 
-function TaskCard({ task, orgSlug }: { task: KanbanTask; orgSlug?: string }) {
+function TaskCard({
+  task,
+  orgSlug,
+  onClick,
+  draggable,
+}: {
+  task: KanbanTask;
+  orgSlug?: string;
+  onClick?: () => void;
+  draggable?: boolean;
+}) {
   const overdue = isOverdue(task.due_date);
   const priority = task.priority ?? "medium";
 
   return (
-    <div className="tb-card cursor-grab p-3 shadow-card active:cursor-grabbing">
+    <TbCard
+      className={cn("p-3 shadow-card", draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer")}
+      onClick={onClick}
+      interactive={Boolean(onClick) && !draggable}
+    >
       <div className="flex items-start gap-2">
         <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", PRIORITY_COLORS[priority] ?? PRIORITY_COLORS.medium)} />
         <div className="min-w-0 flex-1">
@@ -116,12 +131,30 @@ function TaskCard({ task, orgSlug }: { task: KanbanTask; orgSlug?: string }) {
           <TaskProvenance task={task} orgSlug={orgSlug} />
         </div>
       </div>
-    </div>
+    </TbCard>
   );
 }
 
-function SortableTask({ task, orgSlug }: { task: KanbanTask; orgSlug?: string }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
+function SortableTask({
+  task,
+  orgSlug,
+  canDrag,
+  onTaskClick,
+}: {
+  task: KanbanTask;
+  orgSlug?: string;
+  canDrag: boolean;
+  onTaskClick?: (task: KanbanTask) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: task.id,
+    disabled: !canDrag,
+  });
+
+  if (!canDrag) {
+    return <TaskCard task={task} orgSlug={orgSlug} onClick={() => onTaskClick?.(task)} />;
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -130,7 +163,7 @@ function SortableTask({ task, orgSlug }: { task: KanbanTask; orgSlug?: string })
       {...attributes}
       {...listeners}
     >
-      <TaskCard task={task} orgSlug={orgSlug} />
+      <TaskCard task={task} orgSlug={orgSlug} draggable />
     </div>
   );
 }
@@ -198,17 +231,24 @@ export function KanbanBoard({
   orgSlug,
   onStatusChange,
   onTaskCreated,
+  canDrag = true,
+  onTaskClick,
+  canQuickAdd = true,
 }: {
   tasks: KanbanTask[];
   orgSlug?: string;
   onStatusChange: (taskId: string, status: string) => void;
   onTaskCreated?: () => void;
+  canDrag?: boolean;
+  onTaskClick?: (task: KanbanTask) => void;
+  canQuickAdd?: boolean;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const handleDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id));
   const handleDragEnd = (e: DragEndEvent) => {
+    if (!canDrag) return;
     setActiveId(null);
     const taskId = String(e.active.id);
     const overId = e.over?.id;
@@ -245,13 +285,21 @@ export function KanbanBoard({
               <SortableContext items={colTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                 <div className="min-h-[120px] space-y-2">
                   {colTasks.map((task) => (
-                    <SortableTask key={task.id} task={task} orgSlug={orgSlug} />
+                    <SortableTask
+                      key={task.id}
+                      task={task}
+                      orgSlug={orgSlug}
+                      canDrag={canDrag}
+                      onTaskClick={onTaskClick}
+                    />
                   ))}
                 </div>
               </SortableContext>
-              <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
-                <QuickAdd columnId={col.id} onAdd={quickAdd} />
-              </div>
+              {canQuickAdd && (
+                <div className="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+                  <QuickAdd columnId={col.id} onAdd={quickAdd} />
+                </div>
+              )}
             </div>
           );
         })}

@@ -2,8 +2,14 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { apiClient, BASE_URL } from "@/app/lib/api";
+import { useAuth } from "@/app/contexts/AuthContext";
+import { canCreateContent, canEditContent, memberApprovalHint } from "@/app/lib/permissions";
 import { t } from "@/app/lib/i18n";
 import { PageHeader } from "@/components/ui/page-header";
+import { TbCard } from "@/components/ui/tb-card";
+import { DetailDrawer } from "@/components/ui/detail-drawer";
+import { useGsapStagger } from "@/hooks/use-gsap-stagger";
+import { useToast } from "@/components/ui/toast";
 
 type Event = {
   id: string;
@@ -15,14 +21,24 @@ type Event = {
 };
 
 export default function CalendarPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const canCreate = canCreateContent(user);
+  const canEdit = canEditContent(user);
   const [events, setEvents] = useState<Event[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [selected, setSelected] = useState<Event | null>(null);
+  const listRef = useGsapStagger<HTMLDivElement>([events.length]);
 
   const load = () => apiClient.get<{ items: Event[] }>("/api/calendar/events").then((r) => setEvents(r.items));
   useEffect(() => { void load(); }, []);
 
   async function handleCreate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!canCreate) {
+      toast(memberApprovalHint(), "info");
+      return;
+    }
     const fd = new FormData(e.currentTarget);
     await apiClient.post("/api/calendar/events", {
       title: fd.get("title"),
@@ -34,6 +50,7 @@ export default function CalendarPage() {
     });
     setShowForm(false);
     void load();
+    toast("Événement créé", "success");
   }
 
   return (
@@ -45,31 +62,44 @@ export default function CalendarPage() {
             <a href={`${BASE_URL}/api/calendar/export.ics`} className="tb-btn-secondary" target="_blank" rel="noreferrer">
               Export iCal
             </a>
-            <button type="button" onClick={() => setShowForm(true)} className="tb-btn-primary h-10">
-              Nouvel événement
-            </button>
+            {canCreate && (
+              <button type="button" onClick={() => setShowForm(true)} className="tb-btn-primary h-10">
+                Nouvel événement
+              </button>
+            )}
           </div>
         }
       />
       {showForm && (
-        <form onSubmit={handleCreate} className="rounded-xl border p-4 space-y-3 dark:border-stone-800">
-          <input name="title" placeholder="Titre" required className="w-full rounded-lg border px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-          <input name="start" type="datetime-local" required className="w-full rounded-lg border px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-          <input name="end" type="datetime-local" required className="w-full rounded-lg border px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-          <input name="location" placeholder="Lieu" className="w-full rounded-lg border px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-          <button type="submit" className="rounded-lg bg-amber-700 px-4 py-2 text-sm text-white">{t("save")}</button>
+        <form onSubmit={handleCreate} className="tb-card animate-slide-up space-y-3 p-4">
+          <input name="title" placeholder="Titre" required className="tb-input" />
+          <input name="start" type="datetime-local" required className="tb-input" />
+          <input name="end" type="datetime-local" required className="tb-input" />
+          <input name="location" placeholder="Lieu" className="tb-input" />
+          <button type="submit" className="tb-btn-primary">{t("save")}</button>
         </form>
       )}
-      <div className="space-y-2">
+      <div ref={listRef} className="space-y-2">
         {events.map((ev) => (
-          <div key={ev.id} className="rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
+          <TbCard key={ev.id} stagger interactive onClick={() => setSelected(ev)} className="p-4">
             <h3 className="font-medium">{ev.title}</h3>
-            <p className="text-sm text-stone-500">
-              {new Date(ev.start_datetime).toLocaleString("fr")} — {ev.location}
+            <p className="text-sm text-slate-500">
+              {new Date(ev.start_datetime).toLocaleString("fr")} — {ev.location || "Sans lieu"}
             </p>
-          </div>
+          </TbCard>
         ))}
       </div>
+
+      <DetailDrawer open={Boolean(selected)} onClose={() => setSelected(null)} title={selected?.title ?? "Événement"}>
+        {selected && (
+          <div className="space-y-3 text-sm">
+            <p><span className="text-slate-500">Début :</span> {new Date(selected.start_datetime).toLocaleString("fr")}</p>
+            <p><span className="text-slate-500">Fin :</span> {new Date(selected.end_datetime).toLocaleString("fr")}</p>
+            <p><span className="text-slate-500">Lieu :</span> {selected.location || "—"}</p>
+            {!canEdit && <p className="text-xs text-amber-700 dark:text-amber-400">{memberApprovalHint()} pour modifier.</p>}
+          </div>
+        )}
+      </DetailDrawer>
     </div>
   );
 }

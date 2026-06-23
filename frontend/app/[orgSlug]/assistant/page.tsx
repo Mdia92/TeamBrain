@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { ChevronDown, Mic, Send } from "lucide-react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { apiClient, ApiRequestError } from "@/app/lib/api";
+import { isOrgAdmin } from "@/app/lib/permissions";
 import { t } from "@/app/lib/i18n";
 import { cn } from "@/app/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
@@ -55,7 +56,7 @@ function confidenceBadgeClass(label: string): string {
 
 export default function AssistantPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "owner" || user?.role === "admin";
+  const isAdmin = isOrgAdmin(user);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [canApprove, setCanApprove] = useState(false);

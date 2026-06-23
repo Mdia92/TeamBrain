@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { AppShell } from "@/components/app-shell";
 import { DashboardSkeleton } from "@/components/ui/skeleton";
+import { useGsapPageEnter } from "@/hooks/use-gsap-page-enter";
 
 export function OrgLayoutClient({
   orgSlug,
@@ -15,6 +16,8 @@ export function OrgLayoutClient({
 }) {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const pageRef = useGsapPageEnter(pathname);
 
   useEffect(() => {
     if (isLoading) return;
@@ -43,5 +46,9 @@ export function OrgLayoutClient({
     return null;
   }
 
-  return <AppShell orgSlug={orgSlug}>{children}</AppShell>;
+  return (
+    <AppShell orgSlug={orgSlug}>
+      <div ref={pageRef}>{children}</div>
+    </AppShell>
+  );
 }

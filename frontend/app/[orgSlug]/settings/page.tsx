@@ -1,23 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
+import { canManageOrg } from "@/app/lib/permissions";
 import { cn } from "@/app/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TeamInvitesSection } from "@/components/team-invites";
 
-const TABS = [
-  { id: "general", label: "Général" },
-  { id: "team", label: "Équipe" },
-  { id: "modules", label: "Modules" },
-  { id: "billing", label: "Facturation" },
+const ALL_TABS = [
+  { id: "general", label: "Général", adminOnly: false },
+  { id: "team", label: "Équipe", adminOnly: true },
+  { id: "modules", label: "Modules", adminOnly: true },
+  { id: "billing", label: "Facturation", adminOnly: false },
 ] as const;
 
-type TabId = (typeof TABS)[number]["id"];
+type TabId = (typeof ALL_TABS)[number]["id"];
 
 const MODULE_LABELS: Record<string, string> = {
   projects: "Projets",
@@ -25,22 +26,40 @@ const MODULE_LABELS: Record<string, string> = {
   meetings: "Réunions",
   documents: "Documents",
   calendar: "Calendrier",
+  messages: "Messages",
   whatsapp: "WhatsApp",
 };
 
+const ROLE_OPTIONS = [
+  { value: "admin", label: "Admin" },
+  { value: "manager", label: "Manager" },
+  { value: "member", label: "Membre" },
+  { value: "field_agent", label: "Agent terrain" },
+];
+
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
+  const isAdmin = canManageOrg(user);
+  const tabs = useMemo(() => ALL_TABS.filter((t) => !t.adminOnly || isAdmin), [isAdmin]);
   const [tab, setTab] = useState<TabId>("general");
   const [billing, setBilling] = useState<Record<string, unknown> | null>(null);
   const [members, setMembers] = useState<{ id: string; full_name: string; email: string; role: string }[]>([]);
+  const [modules, setModules] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [savingModules, setSavingModules] = useState(false);
+
+  useEffect(() => {
+    if (!tabs.some((t) => t.id === tab)) setTab("general");
+  }, [tabs, tab]);
+
+  useEffect(() => {
+    setModules((user?.settings?.modules as string[]) ?? []);
+  }, [user?.settings]);
 
   useEffect(() => {
     Promise.all([
       apiClient.get<Record<string, unknown>>("/api/organizations/current/billing"),
-      user?.role === "owner" || user?.role === "admin"
-        ? apiClient.get<{ items: typeof members }>("/api/members")
-        : Promise.resolve({ items: [] }),
+      isAdmin ? apiClient.get<{ items: typeof members }>("/api/members") : Promise.resolve({ items: [] }),
     ])
       .then(([b, m]) => {
         setBilling(b);
@@ -49,17 +68,37 @@ export default function SettingsPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
     void refreshUser();
-  }, [refreshUser, user?.role]);
+  }, [refreshUser, isAdmin]);
+
+  async function updateMemberRole(memberId: string, role: string) {
+    await apiClient.patch(`/api/members/${memberId}/role`, { role });
+    const m = await apiClient.get<{ items: typeof members }>("/api/members");
+    setMembers(m.items);
+  }
+
+  async function toggleModule(id: string) {
+    const next = modules.includes(id) ? modules.filter((m) => m !== id) : [...modules, id];
+    setModules(next);
+    setSavingModules(true);
+    try {
+      await apiClient.patch("/api/organizations/current/settings", { modules: next });
+      await refreshUser();
+    } catch (e) {
+      console.error(e);
+      setModules((user?.settings?.modules as string[]) ?? []);
+    } finally {
+      setSavingModules(false);
+    }
+  }
 
   const b = billing ?? user?.billing;
-  const modules = (user?.settings?.modules as string[]) ?? [];
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader title="Paramètres" description="Gérez votre organisation, votre équipe et vos modules." />
 
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -103,7 +142,7 @@ export default function SettingsPage() {
             </section>
           )}
 
-          {tab === "team" && (
+          {tab === "team" && isAdmin && (
             <div className="space-y-6">
               <section className="tb-card p-6">
                 <h2 className="font-semibold">Membres</h2>
@@ -115,18 +154,21 @@ export default function SettingsPage() {
                         <p className="truncate font-medium">{m.full_name}</p>
                         <p className="truncate text-xs text-slate-500">{m.email}</p>
                       </div>
-                      <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium capitalize text-primary dark:bg-indigo-950">
-                        {m.role}
-                      </span>
+                      <select
+                        value={m.role}
+                        onChange={(e) => void updateMemberRole(m.id, e.target.value)}
+                        className="rounded-input border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                      >
+                        {ROLE_OPTIONS.map((r) => (
+                          <option key={r.value} value={r.value}>{r.label}</option>
+                        ))}
+                      </select>
                     </li>
                   ))}
                 </ul>
               </section>
               <section className="tb-card p-6">
                 <h2 className="font-semibold">Invitations</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Invitez des collègues par email avec un lien unique.
-                </p>
                 <div className="mt-4">
                   <TeamInvitesSection />
                 </div>
@@ -134,27 +176,25 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {tab === "modules" && (
+          {tab === "modules" && isAdmin && (
             <section className="tb-card p-6">
               <h2 className="font-semibold">Modules actifs</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Les modules désactivés sont masqués dans la navigation.
-              </p>
+              <p className="mt-1 text-sm text-slate-500">Les modules désactivés sont masqués dans la navigation.</p>
               <ul className="mt-4 space-y-3">
                 {Object.entries(MODULE_LABELS).map(([id, label]) => {
                   const on = modules.includes(id);
                   return (
-                    <li
-                      key={id}
-                      className="flex items-center justify-between rounded-input border border-slate-100 px-4 py-3 dark:border-slate-800"
-                    >
+                    <li key={id} className="flex items-center justify-between rounded-input border border-slate-100 px-4 py-3 dark:border-slate-800">
                       <span className="text-sm font-medium">{label}</span>
-                      <span
+                      <button
+                        type="button"
+                        disabled={savingModules}
+                        onClick={() => void toggleModule(id)}
                         className={cn(
                           "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
                           on ? "bg-primary" : "bg-slate-300 dark:bg-slate-600",
                         )}
-                        aria-hidden
+                        aria-pressed={on}
                       >
                         <span
                           className={cn(
@@ -162,14 +202,11 @@ export default function SettingsPage() {
                             on ? "translate-x-6" : "translate-x-1",
                           )}
                         />
-                      </span>
+                      </button>
                     </li>
                   );
                 })}
               </ul>
-              <p className="mt-4 text-xs text-slate-400">
-                Contactez le support pour modifier les modules après l&apos;onboarding.
-              </p>
             </section>
           )}
 

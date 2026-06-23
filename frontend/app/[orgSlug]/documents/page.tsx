@@ -1,9 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Camera, FileText, MapPin, MapPinned, Wifi, WifiOff } from "lucide-react";
+import { Camera, ExternalLink, FileText, MapPin, MapPinned, Wifi, WifiOff } from "lucide-react";
 import { apiClient, ApiRequestError, OfflineQueuedError, uploadFile } from "@/app/lib/api";
 import { attachFieldReportPhoto } from "@/app/lib/camera";
+import { useAuth } from "@/app/contexts/AuthContext";
+import { canCreateContent, canEditContent, memberApprovalHint } from "@/app/lib/permissions";
 import { t } from "@/app/lib/i18n";
 import {
   getPendingCount,
@@ -15,6 +17,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { CardSkeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { TbCard } from "@/components/ui/tb-card";
+import { DetailDrawer } from "@/components/ui/detail-drawer";
+import { useGsapStagger } from "@/hooks/use-gsap-stagger";
 
 type Doc = {
   id: string;
@@ -41,7 +46,11 @@ const ACCEPT_FILES =
 
 export default function DocumentsPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canCreate = canCreateContent(user);
+  const canEdit = canEditContent(user);
   const [docs, setDocs] = useState<Doc[]>([]);
+  const [selected, setSelected] = useState<Doc | null>(null);
   const [tab, setTab] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Doc[] | null>(null);
@@ -163,6 +172,7 @@ export default function DocumentsPage() {
   }
 
   const display = searchResults ?? docs;
+  const listRef = useGsapStagger<HTMLDivElement>([display.length, tab]);
 
   if (loading) return <CardSkeleton lines={4} />;
 
@@ -215,6 +225,9 @@ export default function DocumentsPage() {
       </div>
 
       <form onSubmit={handleUpload} className="tb-card flex flex-wrap items-end gap-4 p-6">
+        {!canCreate && (
+          <p className="w-full text-xs text-amber-700 dark:text-amber-400">{memberApprovalHint()}</p>
+        )}
         <div className="min-w-[200px] flex-1">
           <label className="tb-label" htmlFor="doc-title">
             Titre
@@ -227,7 +240,7 @@ export default function DocumentsPage() {
           </label>
           <input id="doc-file" name="file" type="file" required accept={ACCEPT_FILES} className="text-sm" />
         </div>
-        <button type="submit" className="tb-btn-primary min-h-11">
+        <button type="submit" disabled={!canCreate} className="tb-btn-primary min-h-11">
           {t("upload")}
         </button>
         <button
@@ -293,11 +306,11 @@ export default function DocumentsPage() {
       {display.length === 0 ? (
         <EmptyState icon={FileText} title="Aucun élément" description="Téléversez un fichier ou soumettez un rapport terrain." />
       ) : (
-        <div className="space-y-3">
+        <div ref={listRef} className="space-y-3">
           {display.map((d) => {
             const hasGps = d.gps_latitude != null && d.gps_longitude != null;
             return (
-              <div key={d.id} className="tb-card p-5">
+              <TbCard key={d.id} stagger interactive onClick={() => setSelected(d)} className="p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -316,20 +329,51 @@ export default function DocumentsPage() {
                     </div>
                     {d.mission_date && <p className="mt-1 text-xs text-slate-500">{d.mission_date}</p>}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleSummarize(d.id)}
-                    className="shrink-0 text-xs font-medium text-primary hover:underline"
-                  >
-                    Résumer (IA)
-                  </button>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleSummarize(d.id);
+                      }}
+                      className="shrink-0 text-xs font-medium text-primary hover:underline"
+                    >
+                      Résumer (IA)
+                    </button>
+                  )}
                 </div>
-                {d.ai_summary && <p className="mt-2 text-sm text-slate-500">{d.ai_summary}</p>}
-              </div>
+                {d.ai_summary && <p className="mt-2 line-clamp-2 text-sm text-slate-500">{d.ai_summary}</p>}
+              </TbCard>
             );
           })}
         </div>
       )}
+      <DetailDrawer open={Boolean(selected)} onClose={() => setSelected(null)} title={selected?.title ?? "Document"}>
+        {selected && (
+          <div className="space-y-4 text-sm">
+            <p className="text-slate-500 capitalize">Type : {selected.doc_type.replace("_", " ")}</p>
+            {selected.mission_date && <p>Date mission : {selected.mission_date}</p>}
+            {selected.location_name && <p>Lieu : {selected.location_name}</p>}
+            {selected.ai_summary && (
+              <div className="rounded-input bg-slate-50 p-3 dark:bg-slate-800">
+                <p className="text-xs font-medium text-slate-500">Résumé IA</p>
+                <p className="mt-1">{selected.ai_summary}</p>
+              </div>
+            )}
+            {selected.file_url && (
+              <a
+                href={selected.file_url}
+                target="_blank"
+                rel="noreferrer"
+                className="tb-btn-secondary inline-flex gap-2"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Ouvrir le fichier
+              </a>
+            )}
+          </div>
+        )}
+      </DetailDrawer>
     </div>
   );
 }

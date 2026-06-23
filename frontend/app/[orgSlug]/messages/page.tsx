@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Bold, Italic, List, Mail, Plus, X } from "lucide-react";
 import { apiClient } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
+import { isOrgAdmin } from "@/app/lib/permissions";
 import { PageHeader } from "@/components/ui/page-header";
 import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/app/lib/utils";
@@ -136,7 +137,7 @@ export default function MessagesPage() {
     setMobileShowThread(true);
   }
 
-  const isAdmin = user?.role === "admin" || user?.role === "owner";
+  const isAdmin = isOrgAdmin(user);
 
   return (
     <div className="space-y-4">

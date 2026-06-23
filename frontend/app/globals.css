@@ -23,7 +23,11 @@ body {
 
 @layer components {
   .tb-card {
-    @apply rounded-card border border-slate-200 bg-white shadow-card transition-all duration-150 hover:scale-[1.01] dark:border-slate-800 dark:bg-slate-900;
+    @apply rounded-card border border-slate-200 bg-white shadow-card transition-all duration-150 dark:border-slate-800 dark:bg-slate-900;
+  }
+
+  .tb-card-interactive {
+    @apply hover:border-primary/25 hover:shadow-dropdown hover:scale-[1.01] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40;
   }
 
   .tb-input {

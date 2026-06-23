@@ -10,6 +10,8 @@ import { getTeamSizePreset } from "@/app/lib/org-terminology";
 import { t } from "@/app/lib/i18n";
 import { ActivityLineChart, MemberBarChart } from "@/components/dashboard/dashboard-charts";
 import { useCountUp } from "@/components/dashboard/use-count-up";
+import { TbCard } from "@/components/ui/tb-card";
+import { useGsapStagger } from "@/hooks/use-gsap-stagger";
 import { PageHeader } from "@/components/ui/page-header";
 import { DashboardSkeleton } from "@/components/ui/skeleton";
 import { Avatar } from "@/components/ui/avatar";
@@ -74,15 +76,17 @@ function KpiCard({
   value,
   trend,
   suffix,
+  onClick,
 }: {
   label: string;
   value: number;
   trend?: number | null;
   suffix?: string;
+  onClick?: () => void;
 }) {
   const animated = useCountUp(value);
   return (
-    <div className="tb-card p-6">
+    <TbCard interactive onClick={onClick} className="p-6">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-slate-500">{label}</p>
         {trend !== undefined && <TrendBadge pct={trend} />}
@@ -91,7 +95,7 @@ function KpiCard({
         {animated}
         {suffix && <span className="ml-1 text-lg font-normal text-slate-500">{suffix}</span>}
       </p>
-    </div>
+    </TbCard>
   );
 }
 
@@ -216,6 +220,8 @@ export default function DashboardPage() {
     ];
   }, [data, teamPreset]);
 
+  const kpiRef = useGsapStagger<HTMLDivElement>([kpis.length, data?.kpis.tasks_completed_week]);
+
   if (!data) return <DashboardSkeleton />;
 
   const checklist = data.setup_checklist;
@@ -266,9 +272,22 @@ export default function DashboardPage() {
         </section>
       )}
 
-      <div className={`grid gap-4 sm:grid-cols-2 ${teamPreset !== "simple" ? "xl:grid-cols-4" : ""}`}>
-        {kpis.map((k) => (
-          <KpiCard key={k.label} label={k.label} value={k.value} trend={k.trend} suffix={k.suffix} />
+      <div ref={kpiRef} className={`grid gap-4 sm:grid-cols-2 ${teamPreset !== "simple" ? "xl:grid-cols-4" : ""}`}>
+        {kpis.map((k, i) => (
+          <div key={k.label} className="gsap-stagger-item">
+            <KpiCard
+              label={k.label}
+              value={k.value}
+              trend={k.trend}
+              suffix={k.suffix}
+              onClick={() => {
+                if (i === 0) router.push(`/${orgSlug}/tasks`);
+                else if (i === 1) router.push(`/${orgSlug}/projects`);
+                else if (i === 2) router.push(`/${orgSlug}/documents`);
+                else router.push(`/${orgSlug}/memory`);
+              }}
+            />
+          </div>
         ))}
       </div>
 

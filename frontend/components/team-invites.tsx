@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiClient, ApiRequestError } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
+import { canManageOrg } from "@/app/lib/permissions";
 
 type Invite = { id: string; email: string; role: string; token?: string; invite_url?: string };
 
@@ -21,7 +22,7 @@ export function TeamInvitesSection() {
   const [lastLink, setLastLink] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const canInvite = user?.role === "owner" || user?.role === "admin";
+  const canInvite = canManageOrg(user);
 
   const loadInvites = useCallback(async () => {
     if (!canInvite) return;
