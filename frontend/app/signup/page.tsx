@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { t } from "@/app/lib/i18n";
+import { AuthCard } from "@/components/marketing-shell";
 
 export default function SignupPage() {
   const { signup } = useAuth();
@@ -17,10 +18,17 @@ export default function SignupPage() {
     setLoading(true);
     setError("");
     const fd = new FormData(e.currentTarget);
+    const password = String(fd.get("password"));
+    const confirm = String(fd.get("confirm_password"));
+    if (password !== confirm) {
+      setError("Les mots de passe ne correspondent pas");
+      setLoading(false);
+      return;
+    }
     try {
       await signup({
         email: String(fd.get("email")),
-        password: String(fd.get("password")),
+        password,
         full_name: String(fd.get("full_name")),
         organization_name: String(fd.get("organization_name")),
       });
@@ -33,37 +41,74 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-stone-50 p-4 dark:bg-stone-950">
-      <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 shadow-sm dark:border-stone-800 dark:bg-stone-900">
-        <h1 className="text-2xl font-bold text-amber-800 dark:text-amber-400">{t("signup")}</h1>
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <div>
-            <label className="text-sm font-medium">{t("organizationName")}</label>
-            <input name="organization_name" required className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-          </div>
-          <div>
-            <label className="text-sm font-medium">{t("fullName")}</label>
-            <input name="full_name" required className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-          </div>
-          <div>
-            <label className="text-sm font-medium">{t("email")}</label>
-            <input name="email" type="email" required className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-          </div>
-          <div>
-            <label className="text-sm font-medium">{t("password")}</label>
-            <input name="password" type="password" required minLength={8} className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-          </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <button type="submit" disabled={loading} className="w-full rounded-lg bg-amber-700 px-4 py-2 font-medium text-white hover:bg-amber-800 disabled:opacity-50">
-            {loading ? t("loading") : t("signup")}
-          </button>
-        </form>
-        <p className="mt-4 text-center text-sm text-stone-500">
-          Déjà inscrit ? <Link href="/login" className="text-amber-700 hover:underline">{t("login")}</Link>
+    <AuthCard
+      title="Créer mon compte"
+      subtitle="Rejoignez TeamBrain en quelques minutes"
+      footer={
+        <p className="text-center text-sm text-slate-500">
+          Déjà un compte ?{" "}
+          <Link href="/login" className="font-medium text-primary hover:underline">
+            Se connecter
+          </Link>
           {" · "}
-          <Link href="/create" className="text-amber-700 hover:underline">Créer un espace</Link>
+          <Link href="/create" className="font-medium text-primary hover:underline">
+            Créer un espace
+          </Link>
         </p>
-      </div>
-    </div>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="tb-label" htmlFor="organization_name">
+            {t("organizationName")}
+          </label>
+          <input id="organization_name" name="organization_name" required className="tb-input" />
+        </div>
+        <div>
+          <label className="tb-label" htmlFor="full_name">
+            {t("fullName")}
+          </label>
+          <input id="full_name" name="full_name" required className="tb-input" />
+        </div>
+        <div>
+          <label className="tb-label" htmlFor="email">
+            {t("email")}
+          </label>
+          <input id="email" name="email" type="email" required autoComplete="email" className="tb-input" />
+        </div>
+        <div>
+          <label className="tb-label" htmlFor="password">
+            {t("password")}
+          </label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            className="tb-input"
+          />
+        </div>
+        <div>
+          <label className="tb-label" htmlFor="confirm_password">
+            Confirmer le mot de passe
+          </label>
+          <input
+            id="confirm_password"
+            name="confirm_password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            className="tb-input"
+          />
+        </div>
+        {error && <p className="text-sm text-rose-600">{error}</p>}
+        <button type="submit" disabled={loading} className="tb-btn-primary h-10 w-full">
+          {loading ? t("loading") : "Créer mon compte"}
+        </button>
+      </form>
+    </AuthCard>
   );
 }
