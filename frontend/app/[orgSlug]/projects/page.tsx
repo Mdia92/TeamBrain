@@ -1,9 +1,14 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { FolderKanban, Plus } from "lucide-react";
 import { apiClient, ApiRequestError } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { t } from "@/app/lib/i18n";
+import { useToast } from "@/components/ui/toast";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { CardSkeleton } from "@/components/ui/skeleton";
 
 type Project = {
   id: string;
@@ -15,13 +20,23 @@ type Project = {
 
 export default function ProjectsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const readOnly = user?.billing?.is_read_only === true;
 
-  const load = () => apiClient.get<{ items: Project[] }>("/api/projects").then((r) => setProjects(r.items));
-  useEffect(() => { void load(); }, []);
+  const load = () =>
+    apiClient
+      .get<{ items: Project[] }>("/api/projects")
+      .then((r) => setProjects(r.items))
+      .finally(() => setLoading(false));
+
+  useEffect(() => {
+    void load();
+  }, []);
 
   async function handleCreate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -35,6 +50,7 @@ export default function ProjectsPage() {
       return;
     }
     setFormError("");
+    setSaving(true);
     const fd = new FormData(e.currentTarget);
     try {
       await apiClient.post("/api/projects", {
@@ -43,47 +59,96 @@ export default function ProjectsPage() {
         description: fd.get("description"),
       });
       setShowForm(false);
+      toast("Projet créé", "success");
       void load();
     } catch (err) {
-      setFormError(err instanceof ApiRequestError ? err.message : "Erreur lors de la création");
+      const msg = err instanceof ApiRequestError ? err.message : "Erreur lors de la création";
+      setFormError(msg);
+      toast(msg, "error");
+    } finally {
+      setSaving(false);
     }
   }
 
+  if (loading) return <CardSkeleton lines={4} />;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t("projects")}</h1>
-        <button
-          onClick={() => setShowForm(true)}
-          disabled={readOnly}
-          className="rounded-lg bg-amber-700 px-4 py-2 text-sm text-white disabled:opacity-50"
-        >
-          {t("newProject")}
-        </button>
-      </div>
+      <PageHeader
+        title={t("projects")}
+        description="Organisez votre travail par client et par livrable."
+        actions={
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            disabled={readOnly}
+            className="tb-btn-primary h-10"
+          >
+            <Plus className="h-4 w-4" />
+            {t("newProject")}
+          </button>
+        }
+      />
+
       {showForm && (
-        <form onSubmit={handleCreate} className="rounded-xl border border-stone-200 bg-white p-4 space-y-3 dark:border-stone-800 dark:bg-stone-900">
-          {formError && <p className="text-sm text-red-600">{formError}</p>}
-          <input name="name" placeholder="Nom du projet" required className="w-full rounded-lg border px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-          <input name="client_name" placeholder="Client" className="w-full rounded-lg border px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-          <textarea name="description" placeholder="Description" className="w-full rounded-lg border px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
+        <form onSubmit={handleCreate} className="tb-card animate-slide-up space-y-4 p-6">
+          {formError && <p className="text-sm text-rose-600">{formError}</p>}
+          <div>
+            <label className="tb-label" htmlFor="name">
+              Nom du projet *
+            </label>
+            <input id="name" name="name" required className="tb-input" placeholder="Ex. Programme santé 2026" />
+          </div>
+          <div>
+            <label className="tb-label" htmlFor="client_name">
+              Client
+            </label>
+            <input id="client_name" name="client_name" className="tb-input" placeholder="Nom du client" />
+          </div>
+          <div>
+            <label className="tb-label" htmlFor="description">
+              Description
+            </label>
+            <textarea id="description" name="description" rows={3} className="tb-input min-h-[80px] py-2" />
+          </div>
           <div className="flex gap-2">
-            <button type="submit" className="rounded-lg bg-amber-700 px-4 py-2 text-sm text-white">{t("save")}</button>
-            <button type="button" onClick={() => setShowForm(false)} className="text-sm text-stone-500">{t("cancel")}</button>
+            <button type="submit" disabled={saving} className="tb-btn-primary h-10">
+              {saving ? "Enregistrement..." : t("save")}
+            </button>
+            <button type="button" onClick={() => setShowForm(false)} className="tb-btn-secondary">
+              {t("cancel")}
+            </button>
           </div>
         </form>
       )}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {projects.map((p) => (
-          <div key={p.id} className="rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
-            <h3 className="font-semibold">{p.name}</h3>
-            {p.client_name && <p className="text-sm text-stone-500">{p.client_name}</p>}
-            <span className="mt-2 inline-block rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800 dark:bg-green-950 dark:text-green-300">
-              {p.status}
-            </span>
-          </div>
-        ))}
-      </div>
+
+      {projects.length === 0 ? (
+        <EmptyState
+          icon={FolderKanban}
+          title="Aucun projet encore"
+          description="Créez votre premier projet pour structurer tâches, documents et rapports terrain."
+          action={
+            <button type="button" onClick={() => setShowForm(true)} disabled={readOnly} className="tb-btn-primary h-10">
+              Créer votre premier projet →
+            </button>
+          }
+        />
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {projects.map((p) => (
+            <div key={p.id} className="tb-card p-5">
+              <h3 className="font-semibold text-slate-900 dark:text-slate-100">{p.name}</h3>
+              {p.client_name && <p className="mt-1 text-sm text-slate-500">{p.client_name}</p>}
+              {p.description && (
+                <p className="mt-2 line-clamp-2 text-sm text-slate-600 dark:text-slate-400">{p.description}</p>
+              )}
+              <span className="mt-3 inline-block rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                {p.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,11 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { ChevronDown, Mic, Send } from "lucide-react";
 import { apiClient, ApiRequestError } from "@/app/lib/api";
 import { t } from "@/app/lib/i18n";
+import { cn } from "@/app/lib/utils";
+import { PageHeader } from "@/components/ui/page-header";
 
 type AssistantAnswer = {
   answer: string;
@@ -11,93 +14,181 @@ type AssistantAnswer = {
   sources: string[];
   api_configured?: boolean;
   actions_taken?: string[];
-  grounded?: boolean;
 };
 
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  meta?: AssistantAnswer;
+};
+
+const SUGGESTIONS = [
+  "Qui doit livrer?",
+  "Résumé de la semaine",
+  "Prochaines échéances",
+  "Quelles décisions récentes?",
+];
+
 function confidenceBadgeClass(label: string): string {
-  if (label === "Haute") return "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300";
+  if (label === "Haute") return "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
   if (label === "Moyenne") return "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300";
-  return "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300";
+  return "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300";
 }
 
 export default function AssistantPage() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  async function handleAsk(e: FormEvent) {
-    e.preventDefault();
-    if (!question.trim()) return;
-    setLoading(true);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  async function ask(q: string) {
+    if (!q.trim() || loading) return;
     setError("");
+    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", content: q.trim() };
+    setMessages((prev) => [...prev, userMsg]);
+    setQuestion("");
+    setLoading(true);
     try {
-      const r = await apiClient.post<AssistantAnswer>("/api/assistant/ask", { question });
-      setAnswer(r);
+      const r = await apiClient.post<AssistantAnswer>("/api/assistant/ask", { question: q.trim() });
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), role: "assistant", content: r.answer, meta: r },
+      ]);
     } catch (err) {
-      setAnswer(null);
       setError(err instanceof ApiRequestError ? err.message : "Erreur de l'assistant");
     } finally {
       setLoading(false);
     }
   }
 
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    void ask(question);
+  }
+
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <h1 className="text-2xl font-bold">{t("assistant")}</h1>
-      <p className="text-sm text-stone-500">
-        Posez des questions sur vos projets, tâches, rapports terrain et réunions.
-      </p>
-      <form onSubmit={handleAsk} className="flex gap-2">
-        <input
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder={t("askAssistant")}
-          className="flex-1 rounded-lg border px-4 py-3 dark:border-stone-700 dark:bg-stone-800"
-        />
-        <button type="submit" disabled={loading} className="rounded-lg bg-amber-700 px-6 py-3 text-white disabled:opacity-50">
-          {loading ? "..." : "Demander"}
-        </button>
-      </form>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {answer && (
-        <div className="rounded-xl border border-stone-200 bg-white p-6 dark:border-stone-800 dark:bg-stone-900">
-          {answer.api_configured === false && (
-            <p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-              Configurez une clé API dans les paramètres (GEMINI, GROQ ou MISTRAL).
-            </p>
+    <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-6rem)]">
+      <PageHeader
+        title={t("assistant")}
+        description="Posez des questions sur vos projets, tâches, rapports terrain et réunions."
+      />
+
+      <div className="tb-card flex flex-1 flex-col overflow-hidden">
+        <div className="flex-1 space-y-4 overflow-y-auto p-4 md:p-6">
+          {messages.length === 0 && !loading && (
+            <div className="flex h-full flex-col items-center justify-center text-center text-slate-500">
+              <p className="text-sm">Commencez par une question ou choisissez une suggestion ci-dessous.</p>
+            </div>
           )}
-          <div className="mb-3 flex items-center gap-2">
-            <span className="text-xs text-stone-500">Confiance</span>
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-medium ${confidenceBadgeClass(answer.confidence_label ?? "Faible")}`}
+          {messages.map((m) => (
+            <div
+              key={m.id}
+              className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}
             >
-              {answer.confidence_label ?? "Faible"} ({Math.round((answer.confidence ?? 0) * 100)}%)
-            </span>
-          </div>
-          <p className="whitespace-pre-wrap">{answer.answer}</p>
-          {answer.actions_taken && answer.actions_taken.length > 0 && (
-            <div className="mt-4 rounded-lg bg-stone-50 p-3 text-sm dark:bg-stone-800">
-              <p className="font-medium">Actions exécutées</p>
-              <ul className="mt-1 list-inside list-disc text-stone-600 dark:text-stone-400">
-                {answer.actions_taken.map((a) => (
-                  <li key={a}>{a}</li>
-                ))}
-              </ul>
+              <div
+                className={cn(
+                  "max-w-[85%] rounded-modal px-4 py-3 text-sm",
+                  m.role === "user"
+                    ? "bg-primary text-white"
+                    : "border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800",
+                )}
+              >
+                {m.role === "assistant" && m.meta && (
+                  <div className="mb-2 flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-xs font-medium",
+                        confidenceBadgeClass(m.meta.confidence_label ?? "Faible"),
+                      )}
+                    >
+                      {m.meta.confidence_label} ({Math.round((m.meta.confidence ?? 0) * 100)}%)
+                    </span>
+                    {m.meta.api_configured === false && (
+                      <span className="text-xs text-amber-600">Clé API requise</span>
+                    )}
+                  </div>
+                )}
+                <p className="whitespace-pre-wrap">{m.content}</p>
+                {m.meta?.sources && m.meta.sources.length > 0 && (
+                  <div className="mt-3 border-t border-slate-200 pt-2 dark:border-slate-600">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedSources((prev) => ({ ...prev, [m.id]: !prev[m.id] }))
+                      }
+                      className="flex items-center gap-1 text-xs font-medium text-slate-500"
+                    >
+                      <ChevronDown
+                        className={cn("h-3.5 w-3.5 transition-transform", expandedSources[m.id] && "rotate-180")}
+                      />
+                      Sources ({m.meta.sources.length})
+                    </button>
+                    {expandedSources[m.id] && (
+                      <ul className="mt-2 space-y-1 text-xs text-slate-500">
+                        {m.meta.sources.map((s) => (
+                          <li key={s}>• {s}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="rounded-modal border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800">
+                Réflexion en cours...
+              </div>
             </div>
           )}
-          {answer.sources?.length > 0 && (
-            <div className="mt-4 border-t border-stone-200 pt-4 dark:border-stone-700">
-              <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Sources</p>
-              <ul className="mt-2 space-y-1 text-xs text-stone-600 dark:text-stone-400">
-                {answer.sources.map((s) => (
-                  <li key={s}>• {s}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <div ref={bottomRef} />
         </div>
-      )}
+
+        <div className="border-t border-slate-200 p-4 dark:border-slate-800">
+          {error && <p className="mb-2 text-sm text-rose-600">{error}</p>}
+          <div className="mb-3 flex flex-wrap gap-2">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => void ask(s)}
+                disabled={loading}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 transition-colors hover:border-primary hover:text-primary dark:border-slate-700 dark:text-slate-400"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <input
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder={t("askAssistant")}
+              className="tb-input flex-1"
+              disabled={loading}
+            />
+            <button
+              type="button"
+              className="tb-btn-secondary hidden sm:inline-flex"
+              title="Microphone (bientôt)"
+              disabled
+            >
+              <Mic className="h-4 w-4" />
+            </button>
+            <button type="submit" disabled={loading || !question.trim()} className="tb-btn-primary h-10 px-4">
+              <Send className="h-4 w-4" />
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

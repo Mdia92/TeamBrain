@@ -125,15 +125,30 @@ export default function CreateOrgPage() {
   const modulesStep = isLoggedIn ? 2 : 3;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-stone-50 p-4 dark:bg-stone-950">
-      <div className="w-full max-w-lg rounded-2xl border border-stone-200 bg-white p-8 shadow-sm dark:border-stone-800 dark:bg-stone-900">
-        <div className="mb-6 flex gap-2">
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4 dark:bg-slate-950">
+      <div className="w-full max-w-[600px] animate-fade-in rounded-modal border border-slate-200 bg-white p-8 shadow-dropdown dark:border-slate-800 dark:bg-slate-900">
+        {/* Step indicator */}
+        <div className="mb-8 flex items-center justify-between">
           {steps.map((label, i) => (
-            <div
-              key={label}
-              className={`h-1 flex-1 rounded ${i <= step ? "bg-amber-600" : "bg-stone-200 dark:bg-stone-700"}`}
-              title={label}
-            />
+            <div key={label} className="flex flex-1 items-center">
+              <div className="flex flex-col items-center gap-1">
+                <div
+                  className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition-colors ${
+                    i <= step
+                      ? "bg-primary text-white"
+                      : "border-2 border-slate-200 text-slate-400 dark:border-slate-700"
+                  }`}
+                >
+                  {i + 1}
+                </div>
+                <span className="hidden text-[10px] text-slate-500 sm:block">{label}</span>
+              </div>
+              {i < steps.length - 1 && (
+                <div
+                  className={`mx-1 h-0.5 flex-1 ${i < step ? "bg-primary" : "bg-slate-200 dark:bg-slate-700"}`}
+                />
+              )}
+            </div>
           ))}
         </div>
 
@@ -142,12 +157,12 @@ export default function CreateOrgPage() {
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">Créer votre espace</h1>
               <div>
-                <label className="text-sm font-medium">Nom de l&apos;organisation</label>
+                <label className="tb-label">Nom de l&apos;organisation</label>
                 <input
                   required
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 dark:border-stone-700 dark:bg-stone-800"
+                  className="tb-input"
                 />
               </div>
               <div>
@@ -299,7 +314,7 @@ export default function CreateOrgPage() {
             <button
               type="submit"
               disabled={loading}
-              className="rounded-lg bg-amber-700 px-6 py-2 font-medium text-white hover:bg-amber-800 disabled:opacity-50"
+              className="tb-btn-primary h-10 px-6"
             >
               {loading ? t("loading") : step === lastStep ? "Créer l'espace" : t("continue")}
             </button>

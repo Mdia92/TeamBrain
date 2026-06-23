@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { apiClient, BASE_URL } from "@/app/lib/api";
 import { t } from "@/app/lib/i18n";
+import { PageHeader } from "@/components/ui/page-header";
 
 type Event = {
   id: string;
@@ -37,17 +38,19 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t("calendar")}</h1>
-        <div className="flex gap-2">
-          <a href={`${BASE_URL}/api/calendar/export.ics`} className="rounded-lg border px-4 py-2 text-sm" target="_blank" rel="noreferrer">
-            Export iCal
-          </a>
-          <button onClick={() => setShowForm(true)} className="rounded-lg bg-amber-700 px-4 py-2 text-sm text-white">
-            Nouvel événement
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={t("calendar")}
+        actions={
+          <div className="flex gap-2">
+            <a href={`${BASE_URL}/api/calendar/export.ics`} className="tb-btn-secondary" target="_blank" rel="noreferrer">
+              Export iCal
+            </a>
+            <button type="button" onClick={() => setShowForm(true)} className="tb-btn-primary h-10">
+              Nouvel événement
+            </button>
+          </div>
+        }
+      />
       {showForm && (
         <form onSubmit={handleCreate} className="rounded-xl border p-4 space-y-3 dark:border-stone-800">
           <input name="title" placeholder="Titre" required className="w-full rounded-lg border px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />

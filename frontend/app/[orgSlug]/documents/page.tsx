@@ -1,8 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { FileText } from "lucide-react";
 import { apiClient, uploadFile } from "@/app/lib/api";
 import { t } from "@/app/lib/i18n";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { CardSkeleton } from "@/components/ui/skeleton";
 
 type Doc = { id: string; title: string; file_url: string; ai_summary: string | null };
 
@@ -10,9 +14,17 @@ export default function DocumentsPage() {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Doc[] | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const load = () => apiClient.get<{ items: Doc[] }>("/api/documents").then((r) => setDocs(r.items));
-  useEffect(() => { void load(); }, []);
+  const load = () =>
+    apiClient
+      .get<{ items: Doc[] }>("/api/documents")
+      .then((r) => setDocs(r.items))
+      .finally(() => setLoading(false));
+
+  useEffect(() => {
+    void load();
+  }, []);
 
   async function handleUpload(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -28,7 +40,10 @@ export default function DocumentsPage() {
   }
 
   async function handleSearch() {
-    if (!query.trim()) { setSearchResults(null); return; }
+    if (!query.trim()) {
+      setSearchResults(null);
+      return;
+    }
     const r = await apiClient.get<{ items: Doc[] }>(`/api/documents/search?q=${encodeURIComponent(query)}`);
     setSearchResults(r.items);
   }
@@ -40,31 +55,60 @@ export default function DocumentsPage() {
 
   const display = searchResults ?? docs;
 
+  if (loading) return <CardSkeleton lines={4} />;
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">{t("documents")}</h1>
-      <form onSubmit={handleUpload} className="flex flex-wrap gap-2 rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
-        <input name="title" placeholder="Titre" className="rounded-lg border px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-        <input name="file" type="file" required className="text-sm" />
-        <button type="submit" className="rounded-lg bg-amber-700 px-4 py-2 text-sm text-white">{t("upload")}</button>
+      <PageHeader title={t("documents")} description="Stockez et résumez vos documents avec l'IA." />
+      <form onSubmit={handleUpload} className="tb-card flex flex-wrap items-end gap-4 p-6">
+        <div className="min-w-[200px] flex-1">
+          <label className="tb-label" htmlFor="doc-title">
+            Titre
+          </label>
+          <input id="doc-title" name="title" placeholder="Titre du document" className="tb-input" />
+        </div>
+        <div>
+          <label className="tb-label" htmlFor="doc-file">
+            Fichier
+          </label>
+          <input id="doc-file" name="file" type="file" required className="text-sm" />
+        </div>
+        <button type="submit" className="tb-btn-primary h-10">
+          {t("upload")}
+        </button>
       </form>
       <div className="flex gap-2">
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("search")} className="flex-1 rounded-lg border px-3 py-2 dark:border-stone-700 dark:bg-stone-800" />
-        <button onClick={() => void handleSearch()} className="rounded-lg border px-4 py-2 text-sm">{t("search")}</button>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("search")}
+          className="tb-input flex-1"
+        />
+        <button type="button" onClick={() => void handleSearch()} className="tb-btn-secondary">
+          {t("search")}
+        </button>
       </div>
-      <div className="space-y-3">
-        {display.map((d) => (
-          <div key={d.id} className="rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
-            <div className="flex items-start justify-between">
-              <h3 className="font-medium">{d.title}</h3>
-              <button onClick={() => void handleSummarize(d.id)} className="text-xs text-amber-700 hover:underline">
-                Résumer (IA)
-              </button>
+      {display.length === 0 ? (
+        <EmptyState icon={FileText} title="Aucun document" description="Téléversez votre premier fichier pour commencer." />
+      ) : (
+        <div className="space-y-3">
+          {display.map((d) => (
+            <div key={d.id} className="tb-card p-5">
+              <div className="flex items-start justify-between gap-4">
+                <h3 className="font-medium">{d.title}</h3>
+                <button
+                  type="button"
+                  onClick={() => void handleSummarize(d.id)}
+                  className="shrink-0 text-xs font-medium text-primary hover:underline"
+                >
+                  Résumer (IA)
+                </button>
+              </div>
+              {d.ai_summary && <p className="mt-2 text-sm text-slate-500">{d.ai_summary}</p>}
             </div>
-            {d.ai_summary && <p className="mt-2 text-sm text-stone-500">{d.ai_summary}</p>}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -3,16 +3,55 @@
 @tailwind utilities;
 
 :root {
-  --background: #fafaf9;
-  --foreground: #1c1917;
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --primary: #4f46e5;
+  --accent: #f59e0b;
+  --sidebar: #0f172a;
 }
 
 .dark {
-  --background: #0c0a09;
-  --foreground: #fafaf9;
+  --background: #020617;
+  --foreground: #f1f5f9;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+@layer components {
+  .tb-card {
+    @apply rounded-card border border-slate-200 bg-white shadow-card transition-all duration-150 hover:scale-[1.01] dark:border-slate-800 dark:bg-slate-900;
+  }
+
+  .tb-input {
+    @apply h-9 w-full rounded-input border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition-colors duration-150 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100;
+  }
+
+  .tb-btn {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-input px-4 text-sm font-medium transition-all duration-150 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .tb-btn-primary {
+    @apply tb-btn bg-primary text-white hover:bg-indigo-600;
+  }
+
+  .tb-btn-secondary {
+    @apply tb-btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800;
+  }
+
+  .tb-label {
+    @apply mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300;
+  }
+
+  .tb-skeleton {
+    @apply relative overflow-hidden rounded-md bg-slate-200 dark:bg-slate-800;
+  }
+
+  .tb-skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent dark:via-white/10;
+  }
 }

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { AppShell } from "@/components/app-shell";
+import { DashboardSkeleton } from "@/components/ui/skeleton";
 
 export default function OrgLayout({
   children,
@@ -32,8 +33,8 @@ export default function OrgLayout({
 
   if (isLoading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-stone-500">Chargement...</p>
+      <div className="min-h-screen bg-white p-6 dark:bg-slate-950">
+        <DashboardSkeleton />
       </div>
     );
   }
