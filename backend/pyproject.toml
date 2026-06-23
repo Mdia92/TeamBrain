@@ -25,6 +25,7 @@ dependencies = [
     "pgvector",
     "apscheduler>=3.10",
     "authlib",
+    "firebase-admin",
 ]
 
 [project.optional-dependencies]

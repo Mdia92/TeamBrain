@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.memory_service import MemoryService
+from app.delivery.push import send_push
 from app.delivery.whatsapp import whatsapp_client
 from app.job_dedup import try_acquire_job_key
 
@@ -17,7 +18,8 @@ async def job_overdue_task_alerts(session: AsyncSession) -> int:
     rows = (
         await session.execute(
             text(
-                "SELECT t.id, t.title, t.due_date, t.organization_id, u.full_name, u.email"
+                "SELECT t.id, t.title, t.due_date, t.organization_id, t.assignee_id,"
+                " u.full_name, u.email"
                 " FROM tasks t"
                 " JOIN users u ON u.id = t.assignee_id"
                 " WHERE t.status != 'done'"
@@ -34,6 +36,14 @@ async def job_overdue_task_alerts(session: AsyncSession) -> int:
         msg = f"Rappel: la tâche « {row['title']} » est en retard."
         if row.get("email"):
             whatsapp_client.send_message(row["email"], msg)
+        if row.get("assignee_id"):
+            await send_push(
+                session,
+                user_id=str(row["assignee_id"]),
+                title="Tâche en retard",
+                body=msg,
+                data={"type": "overdue_task", "task_id": str(row["id"])},
+            )
         await brain.write_memory(
             org_id=str(row["organization_id"]),
             type="episodic",
@@ -54,7 +64,7 @@ async def job_commitment_reminders(session: AsyncSession) -> int:
     rows = (
         await session.execute(
             text(
-                "SELECT mc.id, mc.commitment_text, mc.deadline, mc.meeting_id,"
+                "SELECT mc.id, mc.commitment_text, mc.deadline, mc.meeting_id, mc.committed_by,"
                 " m.organization_id, u.full_name, u.email"
                 " FROM meeting_commitments mc"
                 " JOIN meetings m ON m.id = mc.meeting_id"
@@ -73,6 +83,14 @@ async def job_commitment_reminders(session: AsyncSession) -> int:
         )
         if row.get("email"):
             whatsapp_client.send_message(row["email"], msg)
+        if row.get("committed_by"):
+            await send_push(
+                session,
+                user_id=str(row["committed_by"]),
+                title="Rappel d'engagement",
+                body=msg,
+                data={"type": "commitment", "meeting_id": str(row["meeting_id"])},
+            )
         await session.execute(
             text(
                 "UPDATE meeting_commitments SET reminder_sent = true WHERE id = :id"
@@ -125,6 +143,22 @@ async def job_field_report_gap_alerts(session: AsyncSession) -> int:
         if not await try_acquire_job_key(session, "field_report_gaps", dedup_key):
             continue
         oid = str(row["organization_id"])
+        gap_msg = f"Aucun rapport terrain cette semaine pour {row['full_name']}."
+        await send_push(
+            session,
+            user_id=str(row["id"]),
+            title="Rapport terrain manquant",
+            body=gap_msg,
+            data={"type": "field_report_gap"},
+        )
+        if row.get("manager_id"):
+            await send_push(
+                session,
+                user_id=str(row["manager_id"]),
+                title="Écart rapport terrain",
+                body=gap_msg,
+                data={"type": "field_report_gap", "agent_id": str(row["id"])},
+            )
         await brain.write_memory(
             org_id=oid,
             type="episodic",
@@ -159,7 +193,7 @@ async def trigger_on_task_change(session: AsyncSession, org_id: str) -> int:
     rows = (
         await session.execute(
             text(
-                "SELECT t.id, t.title, t.organization_id, u.full_name, u.email"
+                "SELECT t.id, t.title, t.organization_id, t.assignee_id, u.full_name, u.email"
                 " FROM tasks t"
                 " JOIN users u ON u.id = t.assignee_id"
                 " WHERE t.organization_id = CAST(:oid AS uuid)"
@@ -173,6 +207,14 @@ async def trigger_on_task_change(session: AsyncSession, org_id: str) -> int:
         msg = f"Rappel: la tâche « {row['title']} » est en retard."
         if row.get("email"):
             whatsapp_client.send_message(row["email"], msg)
+        if row.get("assignee_id"):
+            await send_push(
+                session,
+                user_id=str(row["assignee_id"]),
+                title="Tâche en retard",
+                body=msg,
+                data={"type": "overdue_task", "task_id": str(row["id"])},
+            )
         await brain.write_memory(
             org_id=org_id,
             type="episodic",

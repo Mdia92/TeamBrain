@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     s3_secret_key: str = ""
     s3_bucket: str = ""
 
+    firebase_service_account_json: str = ""
+
     # Local demo seed only — never commit real values (set in .env)
     seed_demo_email: str = "amadou@timtimol.sn"
     seed_demo_password: str = ""

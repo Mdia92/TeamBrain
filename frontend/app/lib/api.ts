@@ -1,3 +1,5 @@
+import { isOnline, OfflineQueuedError, tryQueueOfflineWrite } from "@/app/lib/offline-sync";
+
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8010";
 
@@ -47,6 +49,8 @@ export class ApiRequestError extends Error {
     this.status = status;
   }
 }
+
+export { OfflineQueuedError } from "@/app/lib/offline-sync";
 
 async function parseError(response: Response): Promise<string> {
   try {
@@ -120,10 +124,26 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
+async function writeRequest<T>(
+  method: "POST" | "PATCH",
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  if (!isOnline()) {
+    const queued = await tryQueueOfflineWrite(
+      method,
+      path,
+      body as Record<string, unknown> | undefined,
+    );
+    if (queued) throw new OfflineQueuedError(queued);
+  }
+  return request<T>(method, path, body);
+}
+
 export const apiClient = {
   get: <T>(path: string) => request<T>("GET", path),
-  post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
-  patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
+  post: <T>(path: string, body?: unknown) => writeRequest<T>("POST", path, body),
+  patch: <T>(path: string, body?: unknown) => writeRequest<T>("PATCH", path, body),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
   delete: <T>(path: string) => request<T>("DELETE", path),
 };

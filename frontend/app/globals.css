@@ -46,6 +46,16 @@ body {
     @apply mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300;
   }
 
+  @media (max-width: 768px) {
+    .tb-input {
+      @apply min-h-11;
+    }
+
+    .tb-btn {
+      @apply min-h-11;
+    }
+  }
+
   .tb-skeleton {
     @apply relative overflow-hidden rounded-md bg-slate-200 dark:bg-slate-800;
   }

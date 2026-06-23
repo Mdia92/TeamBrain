@@ -1,15 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { MapPin, MapPinned, Wifi, WifiOff } from "lucide-react";
-import { apiClient, ApiRequestError } from "@/app/lib/api";
+import { Camera, MapPin, MapPinned, Wifi, WifiOff } from "lucide-react";
+import { apiClient, ApiRequestError, OfflineQueuedError } from "@/app/lib/api";
+import { attachFieldReportPhoto } from "@/app/lib/camera";
 import { t } from "@/app/lib/i18n";
-import {
-  getPendingReports,
-  isOnline,
-  saveOfflineReport,
-  syncPendingReports,
-} from "@/app/lib/offline-sync";
+import { getPendingCount, isOnline, subscribeNetworkStatus } from "@/app/lib/offline-sync";
 import { initials } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
@@ -38,6 +34,8 @@ export default function FieldReportsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoData, setPhotoData] = useState<string | null>(null);
 
   const load = async () => {
     const [r, m] = await Promise.all([
@@ -46,25 +44,19 @@ export default function FieldReportsPage() {
     ]);
     setReports(r.items);
     setMapPoints(m.points);
-    const p = await getPendingReports();
-    setPending(p.length);
+    const p = await getPendingCount();
+    setPending(p);
     setLoading(false);
   };
 
   useEffect(() => {
     setOnline(isOnline());
-    const onOnline = () => {
-      setOnline(true);
-      void syncPendingReports((items) => apiClient.post("/api/sync/push", { items })).then(() => load());
-    };
-    const onOffline = () => setOnline(false);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
+    const unsub = subscribeNetworkStatus((next) => {
+      setOnline(next);
+      if (next) void load();
+    });
     void load();
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
-    };
+    return unsub;
   }, []);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -77,24 +69,29 @@ export default function FieldReportsPage() {
       description: String(fd.get("description") || ""),
       latitude: Number(fd.get("latitude") || 0) || undefined,
       longitude: Number(fd.get("longitude") || 0) || undefined,
+      photos: photoData ? [photoData] : [],
     };
 
     try {
-      if (!online) {
-        const client_id = crypto.randomUUID();
-        await saveOfflineReport({ client_id, ...payload, created_at: new Date().toISOString() });
-        setPending((p) => p + 1);
+      await apiClient.post("/api/field-reports", payload);
+      toast(online ? "Rapport terrain soumis" : "Rapport enregistré hors ligne — synchronisation à la reconnexion", online ? "success" : "info");
+      e.currentTarget.reset();
+      setPhotoData(null);
+      setPhotoPreview(null);
+      setShowForm(false);
+      const p = await getPendingCount();
+      setPending(p);
+      if (online) void load();
+    } catch (err) {
+      if (err instanceof OfflineQueuedError) {
         toast("Rapport enregistré hors ligne — synchronisation à la reconnexion", "info");
         e.currentTarget.reset();
+        setPhotoData(null);
+        setPhotoPreview(null);
         setShowForm(false);
+        setPending((n) => n + 1);
         return;
       }
-      await apiClient.post("/api/field-reports", payload);
-      toast("Rapport terrain soumis", "success");
-      e.currentTarget.reset();
-      setShowForm(false);
-      void load();
-    } catch (err) {
       toast(err instanceof ApiRequestError ? err.message : "Erreur lors de l'envoi", "error");
     } finally {
       setSubmitting(false);
@@ -109,6 +106,15 @@ export default function FieldReportsPage() {
       if (lng) lng.value = String(pos.coords.longitude);
       toast("Position GPS capturée", "success");
     });
+  }
+
+  async function capturePhoto() {
+    const dataUrl = await attachFieldReportPhoto();
+    if (dataUrl) {
+      setPhotoData(dataUrl);
+      setPhotoPreview(dataUrl);
+      toast("Photo attachée au rapport", "success");
+    }
   }
 
   if (loading) return <CardSkeleton lines={5} />;
@@ -178,14 +184,24 @@ export default function FieldReportsPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={captureGps} className="tb-btn-secondary">
+            <button type="button" onClick={captureGps} className="tb-btn-secondary min-h-11">
               <MapPinned className="h-4 w-4" />
               Capturer GPS
             </button>
-            <button type="submit" disabled={submitting} className="tb-btn-primary h-10">
+            <button type="button" onClick={() => void capturePhoto()} className="tb-btn-secondary min-h-11">
+              <Camera className="h-4 w-4" />
+              Photo preuve
+            </button>
+            <button type="submit" disabled={submitting} className="tb-btn-primary min-h-11">
               {submitting ? "Envoi..." : "Soumettre le rapport"}
             </button>
           </div>
+          {photoPreview && (
+            <div className="overflow-hidden rounded-input border border-slate-200 dark:border-slate-700">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photoPreview} alt="Preuve terrain" className="max-h-48 w-full object-cover" />
+            </div>
+          )}
         </form>
       )}
 

@@ -63,6 +63,23 @@ SEED_DEMO_PASSWORD=your_local_demo_password
 
 Use those credentials to sign in locally. **Never commit passwords** — GitGuardian and git history may retain leaked secrets; rotate any password that was ever pushed.
 
+## Mobile (Capacitor)
+
+Native iOS/Android shells wrap the static Next.js export (`out/`).
+
+```powershell
+cd frontend
+npm run build          # web / Vercel (standalone)
+npm run build:mobile   # static export → out/
+npx cap sync           # or: npm run cap:sync
+npx cap open android   # Android Studio
+npx cap open ios       # Xcode (macOS only)
+```
+
+**Live reload on a physical device:** set `CAPACITOR_DEV_SERVER_URL=http://<your-lan-ip>:3010` in `frontend/.env.local`, run `npm run dev`, then `npx cap sync`.
+
+**Push notifications:** create a Firebase project, add iOS/Android apps, paste the service account JSON (single line) into `backend/.env` as `FIREBASE_SERVICE_ACCOUNT_JSON`, run `alembic upgrade head` (migration `007_device_tokens`).
+
 ## Verification (after changes)
 
 With backend on **8010**:

@@ -20,6 +20,7 @@ from app.api import (
     members,
     memory,
     messages,
+    notifications,
     organizations,
     projects,
     sync,
@@ -74,6 +75,7 @@ app.include_router(events.router)
 app.include_router(members.router)
 app.include_router(invites.router)
 app.include_router(memory.router)
+app.include_router(notifications.router)
 app.include_router(organizations.router)
 
 

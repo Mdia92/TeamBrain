@@ -417,8 +417,8 @@ export function AppShell({
           </header>
 
           {/* Main content */}
-          <main className="flex-1 overflow-y-auto bg-white pb-20 dark:bg-slate-950 md:pb-6">
-            <div className="mx-auto max-w-6xl animate-fade-in px-6 py-6">
+          <main className="flex-1 overflow-y-auto bg-white pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] dark:bg-slate-950 md:pb-6">
+            <div className="mx-auto max-w-6xl animate-fade-in px-4 py-6 sm:px-6">
               {currentSegment !== "dashboard" && (
                 <PageHeader title={pageTitle} breadcrumbs={breadcrumbs} className="md:hidden" />
               )}
@@ -427,7 +427,7 @@ export function AppShell({
           </main>
 
           {/* Mobile bottom tabs */}
-          <nav className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-slate-200 bg-white md:hidden dark:border-slate-800 dark:bg-slate-950">
+          <nav className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom,0px)] md:hidden dark:border-slate-800 dark:bg-slate-950">
             {MOBILE_TABS.map(({ href, label, icon: Icon }) => {
               const path = `/${orgSlug}/${href}`;
               const active = pathname === path || pathname.startsWith(`${path}/`);
@@ -436,7 +436,7 @@ export function AppShell({
                   key={href}
                   href={path}
                   className={cn(
-                    "flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] transition-colors",
+                    "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] transition-colors",
                     active ? "text-primary" : "text-slate-500",
                   )}
                 >
@@ -449,7 +449,7 @@ export function AppShell({
               type="button"
               onClick={() => setMoreOpen(!moreOpen)}
               className={cn(
-                "flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px]",
+                "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px]",
                 moreOpen ? "text-primary" : "text-slate-500",
               )}
             >
@@ -461,7 +461,7 @@ export function AppShell({
           {moreOpen && (
             <>
               <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setMoreOpen(false)} />
-              <div className="fixed bottom-16 left-0 right-0 z-50 max-h-64 overflow-y-auto rounded-t-modal border border-slate-200 bg-white p-4 shadow-dropdown animate-slide-up md:hidden dark:border-slate-800 dark:bg-slate-900">
+              <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] left-0 right-0 z-50 max-h-[min(16rem,50vh)] overflow-y-auto rounded-t-modal border border-slate-200 bg-white p-4 shadow-dropdown animate-slide-up md:hidden dark:border-slate-800 dark:bg-slate-900">
                 <p className="mb-2 text-xs font-semibold uppercase text-slate-500">Navigation</p>
                 <div className="grid grid-cols-2 gap-2">
                   {NAV_GROUPS.flatMap((g) => g.items)

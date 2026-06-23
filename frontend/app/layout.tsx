@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { AuthProvider } from "@/app/contexts/AuthContext";
+import { CapacitorBootstrap } from "@/components/capacitor-bootstrap";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ToastProvider } from "@/components/ui/toast";
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <ToastProvider>
             <AuthProvider>
+              <CapacitorBootstrap />
               <ServiceWorkerRegister />
               {children}
             </AuthProvider>
