@@ -131,7 +131,7 @@ async def update_task_status(
 ) -> dict:
     result = await session.execute(
         text(
-            "UPDATE tasks SET status = :status WHERE id = CAST(:tid AS uuid)"
+            "UPDATE tasks SET status = :status, updated_at = now() WHERE id = CAST(:tid AS uuid)"
             " AND organization_id = CAST(:oid AS uuid)"
             " RETURNING id, title, assignee_id, organization_id"
         ).bindparams(tid=task_id, oid=str(user["organization_id"]), status=body.status),
@@ -176,7 +176,7 @@ async def update_task(
     await session.execute(
         text(
             "UPDATE tasks SET title = :title, description = :desc, assignee_id = CAST(:aid AS uuid),"
-            " due_date = :due, priority = :priority, status = :status"
+            " due_date = :due, priority = :priority, status = :status, updated_at = now()"
             " WHERE id = CAST(:tid AS uuid) AND organization_id = CAST(:oid AS uuid)"
         ).bindparams(
             tid=task_id,

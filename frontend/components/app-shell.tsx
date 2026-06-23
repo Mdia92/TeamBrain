@@ -33,6 +33,7 @@ import { getOrgTerm } from "@/app/lib/org-terminology";
 import { cn } from "@/app/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { PageHeader, type BreadcrumbItem } from "@/components/ui/page-header";
+import { AppFooter } from "@/components/marketing-shell";
 
 type NavItem = {
   href: string;
@@ -106,9 +107,9 @@ function TrialBanner() {
   if (billing.is_read_only) {
     return (
       <div className="border-b border-amber-300/50 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/80 dark:text-amber-100">
-        Votre essai est terminé — mode lecture seule.{" "}
+        Votre essai est terminé — passez à un forfait pour continuer.{" "}
         <Link href="/pricing" className="font-medium text-primary hover:underline">
-          Voir les forfaits
+          Mettre à niveau
         </Link>
       </div>
     );
@@ -427,13 +428,14 @@ export function AppShell({
           </header>
 
           {/* Main content */}
-          <main className="flex-1 overflow-y-auto bg-white pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] dark:bg-slate-950 md:pb-6">
+          <main className="flex-1 overflow-y-auto bg-white pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] dark:bg-slate-950 md:pb-0">
             <div className="mx-auto max-w-6xl animate-fade-in px-4 py-6 sm:px-6">
               {currentSegment !== "dashboard" && (
                 <PageHeader title={pageTitle} breadcrumbs={breadcrumbs} className="md:hidden" />
               )}
               {children}
             </div>
+            <AppFooter />
           </main>
 
           {/* Mobile bottom tabs */}

@@ -1,16 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
+import { apiClient } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { cn } from "@/app/lib/utils";
 import { MarketingFooter, TeamBrainLogo } from "@/components/marketing-shell";
+import { PayDunyaCheckoutButton, PayDunyaStatusBadge } from "@/components/paydunya-checkout";
 
 const TIERS = [
   {
-    id: "starter",
+    id: "starter" as const,
     name: "Starter",
-    price: "À définir",
+    priceFcfa: 5_000,
     desc: "Petites équipes terrain, modules essentiels",
     features: [
       "Jusqu'à 5 utilisateurs",
@@ -21,9 +24,9 @@ const TIERS = [
     ],
   },
   {
-    id: "pro",
+    id: "pro" as const,
     name: "Pro",
-    price: "À définir",
+    priceFcfa: 15_000,
     desc: "Organisations en croissance, IA avancée",
     features: [
       "Utilisateurs illimités",
@@ -35,9 +38,9 @@ const TIERS = [
     highlight: true,
   },
   {
-    id: "enterprise",
+    id: "enterprise" as const,
     name: "Enterprise",
-    price: "Sur devis",
+    priceFcfa: null,
     desc: "Multi-sites, SLA, intégrations sur mesure",
     features: [
       "SSO et audit avancé",
@@ -60,17 +63,30 @@ function planMatchesTier(userTier: string | undefined, tierId: string): boolean 
   return map[userTier] === tierId;
 }
 
+function formatFcfa(amount: number) {
+  return `${amount.toLocaleString("fr-FR")} FCFA`;
+}
+
 export default function PricingPage() {
   const { user } = useAuth();
   const userTier = user?.billing?.pricing_tier as string | undefined;
+  const [paydunya, setPaydunya] = useState<{ configured: boolean; mode: string } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    apiClient
+      .get<{ configured: boolean; mode: string }>("/api/billing/paydunya/status")
+      .then(setPaydunya)
+      .catch(() => setPaydunya({ configured: false, mode: "sandbox" }));
+  }, [user]);
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
       <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <TeamBrainLogo />
-          <Link href="/login" className="tb-btn-secondary text-sm">
-            Connexion
+          <Link href={user ? `/${user.org_slug}/dashboard` : "/login"} className="tb-btn-secondary text-sm">
+            {user ? "Tableau de bord" : "Connexion"}
           </Link>
         </div>
       </header>
@@ -81,13 +97,20 @@ export default function PricingPage() {
             Forfaits TeamBrain
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-slate-500">
-            30 jours d&apos;essai gratuit — toutes les fonctionnalités, sans carte bancaire
+            30 jours d&apos;essai gratuit — paiement sécurisé via PayDunya (Orange Money, Wave, carte)
           </p>
+          {paydunya && (
+            <div className="mt-4 flex justify-center">
+              <PayDunyaStatusBadge configured={paydunya.configured} mode={paydunya.mode} />
+            </div>
+          )}
         </div>
 
         <div className="mt-12 grid gap-6 md:grid-cols-3">
           {TIERS.map((tier) => {
             const isCurrent = planMatchesTier(userTier, tier.id);
+            const priceLabel =
+              tier.priceFcfa != null ? `${formatFcfa(tier.priceFcfa)} / mois` : "Sur devis";
             return (
               <div
                 key={tier.id}
@@ -110,7 +133,7 @@ export default function PricingPage() {
                   </span>
                 )}
                 <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">{tier.name}</h2>
-                <p className="mt-2 text-2xl font-semibold text-primary">{tier.price}</p>
+                <p className="mt-2 text-2xl font-semibold text-primary">{priceLabel}</p>
                 <p className="mt-2 text-sm text-slate-500">{tier.desc}</p>
                 <ul className="mt-6 flex-1 space-y-3 text-sm">
                   {tier.features.map((f) => (
@@ -120,22 +143,38 @@ export default function PricingPage() {
                     </li>
                   ))}
                 </ul>
-                <button
-                  type="button"
-                  disabled
-                  className={cn(
-                    "mt-8 w-full rounded-input py-2.5 text-sm font-medium",
-                    tier.highlight
-                      ? "bg-primary text-white opacity-60"
-                      : "border border-slate-300 text-slate-500 dark:border-slate-700",
-                  )}
-                >
-                  Commencer — bientôt
-                </button>
+                {tier.id === "enterprise" ? (
+                  <a
+                    href="mailto:contact@teambrain.app?subject=TeamBrain%20Enterprise"
+                    className="mt-8 w-full rounded-input border border-slate-300 py-2.5 text-center text-sm font-medium dark:border-slate-700"
+                  >
+                    Nous contacter
+                  </a>
+                ) : (
+                  <PayDunyaCheckoutButton
+                    tier={tier.id}
+                    highlight={tier.highlight}
+                    label={user ? "Payer avec PayDunya" : "Se connecter pour payer"}
+                    className="mt-8"
+                  />
+                )}
               </div>
             );
           })}
         </div>
+
+        <p className="mx-auto mt-10 max-w-2xl text-center text-xs text-slate-500">
+          Les paiements sont traités par PayDunya conformément à la réglementation UEMOA. TVA applicable selon
+          votre statut fiscal au Sénégal. Consultez nos{" "}
+          <Link href="/legal/cgu" className="text-primary hover:underline">
+            CGU
+          </Link>{" "}
+          et notre{" "}
+          <Link href="/legal/confidentialite" className="text-primary hover:underline">
+            politique de confidentialité
+          </Link>
+          .
+        </p>
       </main>
 
       <MarketingFooter />

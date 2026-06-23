@@ -47,6 +47,12 @@ class Settings(BaseSettings):
 
     firebase_service_account_json: str = ""
 
+    # PayDunya (Senegal / West Africa payments — leave empty until merchant account)
+    paydunya_api_key: str = ""
+    paydunya_master_key: str = ""
+    paydunya_token: str = ""
+    paydunya_mode: Literal["sandbox", "live"] = "sandbox"
+
     # Local demo seed only — never commit real values (set in .env)
     seed_demo_email: str = "amadou@timtimol.sn"
     seed_demo_password: str = ""

@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import * as authApi from "@/app/lib/auth-api";
 import { t } from "@/app/lib/i18n";
+import { AppFooter } from "@/components/marketing-shell";
 
 export default function InvitePage() {
   const params = useParams();
@@ -58,11 +59,19 @@ export default function InvitePage() {
   }
 
   if (!preview && !error) {
-    return <div className="flex min-h-screen items-center justify-center"><p>{t("loading")}</p></div>;
+    return (
+      <div className="flex min-h-screen flex-col">
+        <div className="flex flex-1 items-center justify-center">
+          <p>{t("loading")}</p>
+        </div>
+        <AppFooter />
+      </div>
+    );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-stone-50 p-4 dark:bg-stone-950">
+    <div className="flex min-h-screen flex-col bg-stone-50 dark:bg-stone-950">
+      <div className="flex flex-1 items-center justify-center p-4">
       <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 dark:border-stone-800 dark:bg-stone-900">
         <h1 className="text-2xl font-bold">Rejoindre {preview?.org_name}</h1>
         {preview?.inviter_name && (
@@ -117,7 +126,14 @@ export default function InvitePage() {
         <p className="mt-4 text-center text-sm">
           <Link href="/login" className="text-amber-700 hover:underline">{t("login")}</Link>
         </p>
+        <p className="mt-3 text-center text-xs text-stone-400">
+          En rejoignant, vous acceptez nos{" "}
+          <Link href="/legal/cgu" className="underline">CGU</Link> et notre{" "}
+          <Link href="/legal/confidentialite" className="underline">politique de confidentialité</Link>.
+        </p>
       </div>
+      </div>
+      <AppFooter />
     </div>
   );
 }

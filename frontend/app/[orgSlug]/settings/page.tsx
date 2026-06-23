@@ -10,6 +10,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TeamInvitesSection } from "@/components/team-invites";
+import { PayDunyaCheckoutButton, PayDunyaStatusBadge, TrialUpgradePanel } from "@/components/paydunya-checkout";
 
 const ALL_TABS = [
   { id: "general", label: "Général", adminOnly: false },
@@ -47,6 +48,7 @@ export default function SettingsPage() {
   const [modules, setModules] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingModules, setSavingModules] = useState(false);
+  const [paydunya, setPaydunya] = useState<{ configured: boolean; mode: string; tiers?: Record<string, { price_fcfa: number }> } | null>(null);
 
   useEffect(() => {
     if (!tabs.some((t) => t.id === tab)) setTab("general");
@@ -59,10 +61,12 @@ export default function SettingsPage() {
   useEffect(() => {
     Promise.all([
       apiClient.get<Record<string, unknown>>("/api/organizations/current/billing"),
+      apiClient.get<{ configured: boolean; mode: string; tiers?: Record<string, { price_fcfa: number }> }>("/api/billing/paydunya/status"),
       isAdmin ? apiClient.get<{ items: typeof members }>("/api/members") : Promise.resolve({ items: [] }),
     ])
-      .then(([b, m]) => {
+      .then(([b, p, m]) => {
         setBilling(b);
+        setPaydunya(p);
         setMembers(m.items);
       })
       .catch(console.error)
@@ -92,6 +96,7 @@ export default function SettingsPage() {
   }
 
   const b = billing ?? user?.billing;
+  const readOnly = b?.is_read_only === true;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -211,9 +216,14 @@ export default function SettingsPage() {
           )}
 
           {tab === "billing" && (
-            <section className="tb-card p-6">
-              <h2 className="font-semibold">Facturation</h2>
-              <dl className="mt-4 space-y-3 text-sm">
+            <div className="space-y-6">
+              {readOnly && <TrialUpgradePanel />}
+            <section className="tb-card space-y-6 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="font-semibold">Facturation</h2>
+                {paydunya && <PayDunyaStatusBadge configured={paydunya.configured} mode={paydunya.mode} />}
+              </div>
+              <dl className="space-y-3 text-sm">
                 <div className="flex justify-between border-b border-slate-100 py-2 dark:border-slate-800">
                   <dt className="text-slate-500">Forfait</dt>
                   <dd className="font-medium">{String(b?.pricing_tier ?? "free_trial")}</dd>
@@ -229,10 +239,35 @@ export default function SettingsPage() {
                   <dd className="font-medium">{b?.is_read_only ? "Lecture seule" : "Actif"}</dd>
                 </div>
               </dl>
-              <Link href="/pricing" className="tb-btn-primary mt-6 inline-flex h-10">
-                Voir les forfaits
+
+              {isAdmin && paydunya?.tiers && (
+                <div className="space-y-3 border-t border-slate-100 pt-6 dark:border-slate-800">
+                  <h3 className="text-sm font-medium">Passer à un forfait payant</h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(["starter", "pro"] as const).map((tier) => (
+                      <div key={tier} className="rounded-input border border-slate-200 p-4 dark:border-slate-700">
+                        <p className="font-medium capitalize">{tier}</p>
+                        <p className="text-lg font-semibold text-primary">
+                          {paydunya.tiers?.[tier]?.price_fcfa.toLocaleString("fr-FR")} FCFA / mois
+                        </p>
+                        <PayDunyaCheckoutButton tier={tier} className="mt-3" />
+                      </div>
+                    ))}
+                  </div>
+                  {!paydunya.configured && (
+                    <p className="text-xs text-slate-500">
+                      Configurez PAYDUNYA_API_KEY, PAYDUNYA_MASTER_KEY et PAYDUNYA_TOKEN dans backend/.env
+                      pour activer les paiements.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <Link href="/pricing" className="tb-btn-secondary inline-flex h-10">
+                Voir tous les forfaits
               </Link>
             </section>
+            </div>
           )}
         </>
       )}

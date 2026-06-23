@@ -97,7 +97,7 @@ async def get_activity_chart(session: AsyncSession, oid: str, days: int = 30) ->
             text(
                 """
                 WITH days AS (
-                    SELECT generate_series(:start::date, CURRENT_DATE, '1 day'::interval)::date AS day
+                    SELECT generate_series(CAST(:start AS date), CURRENT_DATE, '1 day'::interval)::date AS day
                 ),
                 task_actions AS (
                     SELECT updated_at::date AS day, COUNT(*) AS cnt

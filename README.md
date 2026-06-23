@@ -80,6 +80,16 @@ Demo login after seed: use `SEED_DEMO_EMAIL` / `SEED_DEMO_PASSWORD` from `backen
 10. WhatsApp gateway (Twilio webhook + `core.ask()`)
 11. AI assistant (delegates to `core.ask()`)
 
+## Product polish (June 2026)
+
+- **Permissions in UI** — admin vs member gates on settings, kanban, uploads
+- **Clickable cards** — `TbCard` + `DetailDrawer` across list pages
+- **GSAP** — page enter + list stagger animations in the app shell
+- **Voice notes** — `POST /api/documents/voice-note` (record or upload → transcribe → memory)
+- **WhatsApp brain filter** — casual/joke messages skipped for memory persistence
+- **Legal (FR)** — `/legal/cgu`, `/legal/confidentialite`, `/legal/mentions-legales` + footer on all pages
+- **PayDunya placeholder** — `POST /api/billing/checkout`, `POST /api/webhooks/paydunya` (wire `PAYDUNYA_API_KEY`, `PAYDUNYA_MASTER_KEY`, `PAYDUNYA_TOKEN`)
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

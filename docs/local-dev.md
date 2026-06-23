@@ -26,7 +26,8 @@ These steps require your credentials and cannot be automated in CI:
      Get Gemini: [Google AI Studio](https://aistudio.google.com/apikey) · Groq: [console.groq.com](https://console.groq.com)
    - Optional: `MISTRAL_API_KEY`, Twilio, S3, Google OAuth
 3. **`frontend/.env.local`** — `NEXT_PUBLIC_API_URL=http://localhost:8010`
-4. **Migrations & seed** (once per database):
+4. Optional: **`PAYDUNYA_API_KEY`**, `PAYDUNYA_MASTER_KEY`, `PAYDUNYA_TOKEN` in `backend/.env` for checkout
+5. **Migrations & seed** (once per database):
    ```bash
    cd backend
    .venv\Scripts\Activate.ps1   # Windows

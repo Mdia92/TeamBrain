@@ -225,6 +225,71 @@ async def upload_document(
     return {"id": str(doc_id), "file_url": file_url, "doc_type": resolved_type, "ai_summary": summary}
 
 
+@router.post("/voice-note", status_code=status.HTTP_201_CREATED)
+async def upload_voice_note(
+    audio: UploadFile = File(...),
+    title: str = Form("Note vocale"),
+    project_id: str | None = Form(None),
+    user: dict = Depends(require_write_access),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    from app.workers.transcription import transcribe_audio
+
+    content = await audio.read()
+    filename = audio.filename or "voice.webm"
+    doc_id = uuid.uuid4()
+    oid = str(user["organization_id"])
+    storage = get_storage()
+    key = f"{oid}/documents/{doc_id}/{filename}"
+    file_url = await storage.upload(key, content, audio.content_type or "audio/webm")
+
+    transcript = await transcribe_audio(content, filename)
+    summary = ""
+    if transcript and not transcript.startswith("["):
+        summary, _ = await generate_text(
+            f"Résume cette note vocale en 2-3 phrases:\n\n{transcript[:6000]}",
+            "Assistant TeamBrain.",
+        )
+
+    await session.execute(
+        text(
+            "INSERT INTO documents (id, organization_id, project_id, title, file_url,"
+            " content_type, file_size, ocr_text, ai_summary, uploaded_by, doc_type, submitted_by)"
+            " VALUES (CAST(:did AS uuid), CAST(:oid AS uuid), CAST(:pid AS uuid), :title, :url,"
+            " :ctype, :size, :ocr, :summary, CAST(:uid AS uuid), 'voice_note', CAST(:uid AS uuid))"
+        ).bindparams(
+            did=str(doc_id),
+            oid=oid,
+            pid=project_id,
+            title=title,
+            url=file_url,
+            ctype=audio.content_type or "audio/webm",
+            size=len(content),
+            ocr=transcript[:50000],
+            summary=summary or None,
+            uid=str(user["id"]),
+        ),
+    )
+    brain = MemoryService(session)
+    await brain.write_memory(
+        org_id=oid,
+        type="episodic",
+        entity_type="document",
+        entity_id=str(doc_id),
+        note=summary or transcript[:500] or title,
+        source_module="documents",
+        source_id=str(doc_id),
+    )
+    await session.commit()
+    return {
+        "id": str(doc_id),
+        "file_url": file_url,
+        "doc_type": "voice_note",
+        "transcript": transcript,
+        "ai_summary": summary,
+    }
+
+
 @router.post("/{doc_id}/summarize")
 async def summarize_document(
     doc_id: str,
