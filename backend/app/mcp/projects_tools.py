@@ -1,4 +1,4 @@
-"""MCP tools for projects and tasks."""
+"""MCP tools for projects."""
 
 from __future__ import annotations
 
@@ -34,15 +34,31 @@ def register(registry: MCPRegistry) -> None:
     )
     registry.register(
         MCPToolDefinition(
-            name="tasks_create",
-            description="Create a task in the first matching project.",
+            name="projects_create",
+            description="Create a new project.",
             input_schema={
                 "type": "object",
-                "properties": {"title": {"type": "string"}, "project_id": {"type": "string"}},
-                "required": ["title"],
+                "properties": {"name": {"type": "string"}, "description": {"type": "string"}},
+                "required": ["name"],
             },
         ),
-        _create_task,
+        _create_project,
+    )
+    registry.register(
+        MCPToolDefinition(
+            name="projects_update",
+            description="Update project status or description.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "status": {"type": "string"},
+                    "description": {"type": "string"},
+                },
+                "required": ["project_id"],
+            },
+        ),
+        _update_project,
     )
 
 
@@ -83,36 +99,51 @@ async def _project_status(*, arguments: dict[str, Any], context: dict[str, Any])
     if not row:
         return MCPToolResult(success=False, content=None, error=f"Projet « {name} » introuvable")
     data = dict(row)
-    sources = [f"project:{data['id']}"]
-    return MCPToolResult(success=True, content=data, sources=sources)
+    return MCPToolResult(success=True, content=data, sources=[f"project:{data['id']}"])
 
 
-async def _create_task(*, arguments: dict[str, Any], context: dict[str, Any]) -> MCPToolResult:
+async def _create_project(*, arguments: dict[str, Any], context: dict[str, Any]) -> MCPToolResult:
     session = context["session"]
     org_id = context["org_id"]
     user_id = context.get("user_id")
     if not user_id:
         return MCPToolResult(success=False, content=None, error="Utilisateur requis")
-    pid = arguments.get("project_id")
-    if not pid:
-        proj = (
-            await session.execute(
-                text(
-                    "SELECT id FROM projects WHERE organization_id = CAST(:oid AS uuid) LIMIT 1"
-                ).bindparams(oid=org_id),
-            )
-        ).first()
-        if not proj:
-            return MCPToolResult(success=False, content=None, error="Aucun projet disponible")
-        pid = str(proj[0])
-    tid = str(uuid.uuid4())
-    title = arguments["title"][:500]
+    pid = str(uuid.uuid4())
+    name = arguments["name"][:200]
+    desc = arguments.get("description")
     await session.execute(
         text(
-            "INSERT INTO tasks (id, organization_id, project_id, title, status, source, created_by)"
-            " VALUES (CAST(:tid AS uuid), CAST(:oid AS uuid), CAST(:pid AS uuid), :title,"
-            " 'todo', 'ai_suggestion', CAST(:uid AS uuid))"
-        ).bindparams(tid=tid, oid=org_id, pid=pid, title=title, uid=user_id),
+            "INSERT INTO projects (id, organization_id, name, description, status, created_by)"
+            " VALUES (CAST(:pid AS uuid), CAST(:oid AS uuid), :name, :desc, 'active', CAST(:uid AS uuid))"
+        ).bindparams(pid=pid, oid=org_id, name=name, desc=desc, uid=user_id),
     )
     await session.commit()
-    return MCPToolResult(success=True, content={"task_id": tid}, sources=[f"task:{tid}"])
+    return MCPToolResult(success=True, content={"project_id": pid, "name": name}, sources=[f"project:{pid}"])
+
+
+async def _update_project(*, arguments: dict[str, Any], context: dict[str, Any]) -> MCPToolResult:
+    session = context["session"]
+    org_id = context["org_id"]
+    pid = arguments["project_id"]
+    sets = []
+    params: dict[str, Any] = {"pid": pid, "oid": org_id}
+    if arguments.get("status"):
+        sets.append("status = :status")
+        params["status"] = arguments["status"]
+    if arguments.get("description") is not None:
+        sets.append("description = :desc")
+        params["desc"] = arguments["description"]
+    if not sets:
+        return MCPToolResult(success=False, content=None, error="Aucun champ à mettre à jour")
+    row = (
+        await session.execute(
+            text(
+                f"UPDATE projects SET {', '.join(sets)} WHERE id = CAST(:pid AS uuid)"
+                f" AND organization_id = CAST(:oid AS uuid) RETURNING id, name, status"
+            ).bindparams(**params),
+        )
+    ).mappings().first()
+    if not row:
+        return MCPToolResult(success=False, content=None, error="Projet introuvable")
+    await session.commit()
+    return MCPToolResult(success=True, content=dict(row), sources=[f"project:{pid}"])

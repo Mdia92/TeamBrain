@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_role
 from app.db.session import get_db
+from app.pagination import decode_cursor, paginate_response
+from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/members", tags=["members"])
 
@@ -19,21 +21,32 @@ class RoleUpdateIn(BaseModel):
 
 @router.get("")
 async def list_members(
+    cursor: str | None = None,
+    limit: int = Query(default=50, le=100),
     user: dict = Depends(require_role("owner", "admin")),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    rows = (
-        await session.execute(
-            text(
-                "SELECT u.id, u.full_name, u.email, om.role, u.is_active, om.joined_at"
-                " FROM org_memberships om"
-                " JOIN users u ON u.id = om.user_id"
-                " WHERE om.organization_id = CAST(:oid AS uuid) AND om.is_active = true"
-                " ORDER BY u.full_name"
-            ).bindparams(oid=str(user["organization_id"])),
-        )
-    ).mappings().all()
-    return {"items": [dict(r) for r in rows]}
+    cc, cparams = "", {}
+    if cursor:
+        c = decode_cursor(cursor)
+        cc = " AND (om.joined_at, om.id) < (CAST(:c_at AS timestamptz), CAST(:c_id AS uuid))"
+        cparams = {"c_at": c["joined_at"], "c_id": c["membership_id"]}
+    params: dict = {"oid": str(user["organization_id"]), "lim": limit + 1, **cparams}
+    rows = [
+        dict(r)
+        for r in (
+            await session.execute(
+                text(
+                    "SELECT u.id, u.full_name, u.email, om.role, u.is_active, om.joined_at, om.id AS membership_id"
+                    " FROM org_memberships om"
+                    " JOIN users u ON u.id = om.user_id"
+                    " WHERE om.organization_id = CAST(:oid AS uuid) AND om.is_active = true"
+                    f"{cc} ORDER BY om.joined_at DESC, om.id DESC LIMIT :lim"
+                ).bindparams(**params),
+            )
+        ).mappings().all()
+    ]
+    return paginate_response(rows, limit=limit, cursor_fields=["joined_at", "membership_id"])
 
 
 @router.patch("/{member_id}/role")
@@ -41,6 +54,7 @@ async def update_member_role(
     member_id: str,
     body: RoleUpdateIn,
     user: dict = Depends(require_role("owner", "admin")),
+    _write: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     if body.role not in ("admin", "manager", "member", "field_agent"):

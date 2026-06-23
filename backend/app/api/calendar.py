@@ -5,13 +5,16 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
+from app.pagination import cursor_clause, paginate_response
+from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
@@ -29,26 +32,33 @@ class EventIn(BaseModel):
 
 @router.get("/events")
 async def list_events(
+    cursor: str | None = None,
+    limit: int = Query(default=50, le=100),
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    rows = (
-        await session.execute(
-            text(
-                "SELECT e.id, e.title, e.project_id, e.event_type, e.start_datetime,"
-                " e.end_datetime, e.location, e.description"
-                " FROM events e WHERE e.organization_id = CAST(:oid AS uuid)"
-                " ORDER BY e.start_datetime"
-            ).bindparams(oid=str(user["organization_id"])),
-        )
-    ).mappings().all()
-    return {"items": [dict(r) for r in rows]}
+    cc, cparams = cursor_clause(cursor, time_field="start_datetime", id_field="id")
+    params: dict = {"oid": str(user["organization_id"]), "lim": limit + 1, **cparams}
+    rows = [
+        dict(r)
+        for r in (
+            await session.execute(
+                text(
+                    "SELECT e.id, e.title, e.project_id, e.event_type, e.start_datetime,"
+                    " e.end_datetime, e.location, e.description"
+                    " FROM events e WHERE e.organization_id = CAST(:oid AS uuid)"
+                    f"{cc} ORDER BY e.start_datetime DESC, e.id DESC LIMIT :lim"
+                ).bindparams(**params),
+            )
+        ).mappings().all()
+    ]
+    return paginate_response(rows, limit=limit, cursor_fields=["start_datetime", "id"])
 
 
 @router.post("/events", status_code=status.HTTP_201_CREATED)
 async def create_event(
     body: EventIn,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     conflicts = []
@@ -93,6 +103,16 @@ async def create_event(
                 " VALUES (gen_random_uuid(), CAST(:eid AS uuid), CAST(:aid AS uuid))"
             ).bindparams(eid=str(eid), aid=aid),
         )
+    brain = MemoryService(session)
+    await brain.write_memory(
+        org_id=str(user["organization_id"]),
+        type="episodic",
+        entity_type="message",
+        entity_id=str(eid),
+        note=f"Événement: {body.title} {body.start_datetime.date().isoformat()}",
+        source_module="calendar",
+        source_id=str(eid),
+    )
     await session.commit()
     return {"id": str(eid), "conflicts": conflicts}
 

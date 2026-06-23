@@ -54,8 +54,14 @@ npm run dev   # serves on http://localhost:3010
 
 ## Demo login (after seed)
 
-- Email: `amadou@timtimol.sn`
-- Password: `Timtimol2026!`
+Set in `backend/.env` before running `python scripts/seed_timtimol.py`:
+
+```env
+SEED_DEMO_EMAIL=amadou@timtimol.sn
+SEED_DEMO_PASSWORD=your_local_demo_password
+```
+
+Use those credentials to sign in locally. **Never commit passwords** — GitGuardian and git history may retain leaked secrets; rotate any password that was ever pushed.
 
 ## Verification (after changes)
 

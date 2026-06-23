@@ -50,6 +50,6 @@ async def require_write_access(
     if billing["is_read_only"]:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "Essai gratuit expiré — mode lecture seule. Passez à un forfait payant.",
+            "Votre essai est terminé — mode lecture seule. Passez à un forfait payant.",
         )
     return user

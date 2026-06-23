@@ -1,6 +1,8 @@
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8010";
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 export type User = {
   id: string;
   full_name: string;
@@ -50,10 +52,16 @@ async function parseError(response: Response): Promise<string> {
   try {
     const data = await response.json();
     if (data?.detail) return String(data.detail);
+    if (Array.isArray(data?.errors) && data.errors[0]?.msg) {
+      return String(data.errors[0].msg);
+    }
   } catch {
     /* ignore */
   }
-  return response.statusText || "Request failed";
+  if (response.status === 403) {
+    return "Votre essai est terminé — mode lecture seule.";
+  }
+  return response.statusText || "Requête échouée";
 }
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -79,12 +87,26 @@ async function request<T>(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    method,
-    credentials: "include",
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      method,
+      credentials: "include",
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new ApiRequestError(0, "Connexion perdue, réessayez.");
+    }
+    throw new ApiRequestError(0, "Connexion perdue, réessayez.");
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (response.status === 401 && !isRetry && authConfig) {
     const newToken = await refreshAccessToken();
@@ -113,12 +135,22 @@ export async function uploadFile(
   const token = authConfig?.getToken();
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
-    credentials: "include",
-    headers,
-    body: formData,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS * 2);
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch {
+    throw new ApiRequestError(0, "Connexion perdue, réessayez.");
+  } finally {
+    clearTimeout(timer);
+  }
   if (!response.ok) throw new ApiRequestError(response.status, await parseError(response));
   return response.json();
 }

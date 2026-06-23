@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.llm_client import generate_text, llm_configured
+from app.agents.memory_service import MemoryService
 from app.mcp.client import MCPClient
 
 SIMILARITY_THRESHOLD = 0.6
@@ -107,6 +108,10 @@ async def _plan(question: str) -> AgentPlan:
 
     if any(kw in lower for kw in ("qui doit", "retard", "engagement", "responsable", "livrer")):
         steps.append({"action": "retrieve", "tool": "memory_accountability", "args": {}})
+        steps.append({"action": "retrieve", "tool": "tasks_list_overdue", "args": {}})
+
+    if any(kw in lower for kw in ("rapport terrain", "terrain", "field report")):
+        steps.append({"action": "retrieve", "tool": "field_reports_list_recent", "args": {"limit": 5}})
 
     if any(kw in lower for kw in ("décision", "decisions", "décidé")):
         steps.append({"action": "retrieve", "tool": "meetings_recent_decisions", "args": {"limit": 10}})
@@ -117,6 +122,72 @@ async def _plan(question: str) -> AgentPlan:
         steps.append({"action": "retrieve", "tool": "projects_status", "args": {"name": pname}})
 
     return AgentPlan(steps=steps, intent="answer")
+
+
+async def _verify_action(
+    session: AsyncSession,
+    org_id: str,
+    tool: str,
+    result: Any,
+    mcp: MCPClient,
+    user_id: str | None,
+) -> tuple[bool, str]:
+    """Re-query DB after Act to confirm side effects."""
+    content = result.content or {}
+    if tool == "tasks_create":
+        tid = content.get("task_id")
+        if not tid:
+            return False, "Action failed: task id missing"
+        row = (
+            await session.execute(
+                text(
+                    "SELECT id FROM tasks WHERE id = CAST(:tid AS uuid)"
+                    " AND organization_id = CAST(:oid AS uuid)"
+                ).bindparams(tid=tid, oid=org_id),
+            )
+        ).first()
+        return (bool(row), "Action verified: task created" if row else "Action failed: task not found")
+
+    if tool == "whatsapp_send_reminder":
+        if result.success and content.get("sent", {}).get("status") not in ("not_configured", None):
+            return True, "Action verified: WhatsApp send attempted"
+        if content.get("sent", {}).get("status") == "not_configured":
+            return False, "Action failed: WhatsApp not configured"
+        return result.success, (
+            "Action verified: WhatsApp reminder logged" if result.success else "Action failed: WhatsApp send timeout"
+        )
+
+    if tool == "projects_create":
+        pid = content.get("project_id")
+        if not pid:
+            return False, "Action failed: project id missing"
+        row = (
+            await session.execute(
+                text("SELECT id FROM projects WHERE id = CAST(:pid AS uuid) AND organization_id = CAST(:oid AS uuid)").bindparams(
+                    pid=pid, oid=org_id
+                ),
+            )
+        ).first()
+        return (bool(row), "Action verified: project created" if row else "Action failed: project not found")
+
+    return result.success, f"Action verified: {tool}" if result.success else f"Action failed: {tool}"
+
+
+async def _log_verification(session: AsyncSession, org_id: str, note: str) -> None:
+    try:
+        brain = MemoryService(session)
+        await brain.write_memory(
+            org_id=org_id,
+            type="episodic",
+            entity_type="message",
+            entity_id=None,
+            note=note,
+            source_module="assistant",
+            source_id=None,
+        )
+        await session.commit()
+    except Exception:
+        pass
 
 
 async def run_agent(
@@ -192,31 +263,48 @@ async def run_agent(
                     if result.content.get("projects"):
                         has_structured_data = True
                     context_parts.append(json.dumps(result.content, default=str))
+                elif tool in ("tasks_list_overdue", "tasks_list_by_assignee", "field_reports_list_recent"):
+                    if result.content:
+                        has_structured_data = True
+                    context_parts.append(json.dumps(result.content, default=str))
+                elif tool == "meetings_get_commitments":
+                    if result.content.get("commitments"):
+                        has_structured_data = True
+                    context_parts.append(json.dumps(result.content, default=str))
                 all_sources.extend(result.sources)
 
         elif step["action"] == "act":
             tool = step["tool"]
             args = step.get("args", {})
             result = await mcp.call_tool(tool, args, session=session, org_id=org_id, user_id=user_id)
+            if not result.success:
+                retry = await mcp.call_tool(tool, args, session=session, org_id=org_id, user_id=user_id)
+                if retry.success:
+                    result = retry
             if result.success:
+                verified, vnote = await _verify_action(session, org_id, tool, result, mcp, user_id)
+                if not verified:
+                    retry = await mcp.call_tool(tool, args, session=session, org_id=org_id, user_id=user_id)
+                    verified, vnote = await _verify_action(session, org_id, tool, retry, mcp, user_id)
+                    if retry.success:
+                        result = retry
+                await _log_verification(session, org_id, vnote)
                 if tool == "tasks_create" and result.content.get("task_id"):
-                    actions_taken.append(f"Tâche créée: {result.content['task_id']}")
+                    actions_taken.append(f"Tâche créée: {result.content['task_id']} ({vnote})")
+                elif tool == "whatsapp_send_reminder":
+                    actions_taken.append(f"Rappel WhatsApp: {vnote}")
                 else:
-                    actions_taken.append(f"{tool}: {result.content}")
+                    actions_taken.append(f"{tool}: {result.content} ({vnote})")
                 all_sources.extend(result.sources)
             else:
+                await _log_verification(session, org_id, f"Action failed: {tool} — {result.error or 'erreur'}")
                 actions_taken.append(f"{tool} échoué: {result.error or 'erreur inconnue'}")
 
-    # Live project rows (grounding)
-    project_rows = (
-        await session.execute(
-            text(
-                "SELECT name, status FROM projects WHERE organization_id = CAST(:oid AS uuid)"
-            ).bindparams(oid=org_id),
-        )
-    ).mappings().all()
+    proj_result = await mcp.call_tool("projects_list", {}, session=session, org_id=org_id, user_id=user_id)
+    project_rows = proj_result.content.get("projects", []) if proj_result.success else []
     if project_rows:
-        context_parts.append("Projets (DB): " + json.dumps([dict(r) for r in project_rows], default=str))
+        context_parts.append("Projets (MCP): " + json.dumps(project_rows, default=str))
+        all_sources.extend(proj_result.sources)
 
     context = "\n".join(context_parts) if context_parts else ""
 

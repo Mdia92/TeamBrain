@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     s3_secret_key: str = ""
     s3_bucket: str = ""
 
+    # Local demo seed only — never commit real values (set in .env)
+    seed_demo_email: str = "amadou@timtimol.sn"
+    seed_demo_password: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

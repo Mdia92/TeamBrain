@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
+from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
@@ -28,7 +29,7 @@ class SyncPushIn(BaseModel):
 @router.post("/push", status_code=status.HTTP_201_CREATED)
 async def sync_push(
     body: SyncPushIn,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     synced = []

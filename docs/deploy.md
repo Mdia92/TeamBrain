@@ -72,4 +72,4 @@ cd backend && uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
 cd frontend && npm run dev
 ```
 
-Demo login after seed: `amadou@timtimol.sn` / `Timtimol2026!`
+Demo login after seed: `SEED_DEMO_EMAIL` / `SEED_DEMO_PASSWORD` from `backend/.env` (never commit).

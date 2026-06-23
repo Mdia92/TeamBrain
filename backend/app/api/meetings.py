@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +15,9 @@ from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
 from app.events.worker import trigger_on_meeting_processed
+from app.pagination import decode_cursor, paginate_response
 from app.storage.s3 import get_storage
+from app.trial import require_write_access
 from app.workers.transcription import transcribe_audio
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
@@ -23,21 +26,28 @@ router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 @router.get("")
 async def list_meetings(
     project_id: str | None = None,
+    cursor: str | None = None,
+    limit: int = Query(default=50, le=100),
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
+    cc, cparams = "", {}
+    if cursor:
+        c = decode_cursor(cursor)
+        cc = " AND (date, id) < (CAST(:c_at AS date), CAST(:c_id AS uuid))"
+        cparams = {"c_at": c["date"], "c_id": c["id"]}
     query = (
         "SELECT id, title, date, duration_minutes, ai_summary, platform_source,"
         " processing_status, project_id FROM meetings"
         " WHERE organization_id = CAST(:oid AS uuid)"
     )
-    params = {"oid": str(user["organization_id"])}
+    params: dict = {"oid": str(user["organization_id"]), "lim": limit + 1, **cparams}
     if project_id:
         query += " AND project_id = CAST(:pid AS uuid)"
         params["pid"] = project_id
-    query += " ORDER BY date DESC"
-    rows = (await session.execute(text(query).bindparams(**params))).mappings().all()
-    return {"items": [dict(r) for r in rows]}
+    query += f"{cc} ORDER BY date DESC, id DESC LIMIT :lim"
+    rows = [dict(r) for r in (await session.execute(text(query).bindparams(**params))).mappings().all()]
+    return paginate_response(rows, limit=limit, cursor_fields=["date", "id"])
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -45,7 +55,7 @@ async def upload_meeting(
     title: str = Form(...),
     project_id: str | None = Form(None),
     audio: UploadFile = File(...),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     mid = uuid.uuid4()
@@ -70,11 +80,20 @@ async def upload_meeting(
             uid=str(user["id"]),
         ),
     )
+    brain = MemoryService(session)
+    await brain.write_memory(
+        org_id=oid,
+        type="episodic",
+        entity_type="meeting",
+        entity_id=str(mid),
+        note=f"Réunion: {title} {datetime.now(UTC).date().isoformat()}",
+        source_module="meetings",
+        source_id=str(mid),
+    )
     await session.commit()
 
     transcript = await transcribe_audio(audio_bytes, audio.filename or "audio.webm")
     extraction, model = await extract_meeting_intelligence(transcript)
-    brain = MemoryService(session)
 
     await session.execute(
         text(

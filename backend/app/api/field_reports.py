@@ -6,7 +6,7 @@ import json
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,8 @@ from app.agents.llm_client import generate_text
 from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
+from app.pagination import cursor_clause, paginate_response
+from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/field-reports", tags=["field-reports"])
 
@@ -36,27 +38,30 @@ class FieldReportIn(BaseModel):
 @router.get("")
 async def list_field_reports(
     project_id: str | None = None,
+    cursor: str | None = None,
+    limit: int = Query(default=50, le=100),
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
+    cc, cparams = cursor_clause(cursor, time_field="created_at")
     query = (
         "SELECT id, project_id, mission_date, location_name, latitude, longitude,"
         " report_type, description, ai_summary, recommendations, synced_at, created_at"
         " FROM field_reports WHERE organization_id = CAST(:oid AS uuid)"
     )
-    params = {"oid": str(user["organization_id"])}
+    params: dict = {"oid": str(user["organization_id"]), "lim": limit + 1, **cparams}
     if project_id:
         query += " AND project_id = CAST(:pid AS uuid)"
         params["pid"] = project_id
-    query += " ORDER BY mission_date DESC"
-    rows = (await session.execute(text(query).bindparams(**params))).mappings().all()
-    return {"items": [dict(r) for r in rows]}
+    query += f"{cc} ORDER BY created_at DESC, id DESC LIMIT :lim"
+    rows = [dict(r) for r in (await session.execute(text(query).bindparams(**params))).mappings().all()]
+    return paginate_response(rows, limit=limit, cursor_fields=["created_at", "id"])
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_field_report(
     body: FieldReportIn,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     rid = uuid.uuid4()

@@ -51,7 +51,7 @@ npm install
 npm run dev   # http://localhost:3010
 ```
 
-Demo login after seed: `amadou@timtimol.sn` / `Timtimol2026!`
+Demo login after seed: use `SEED_DEMO_EMAIL` / `SEED_DEMO_PASSWORD` from `backend/.env` (never commit passwords).
 
 ## Deploy
 

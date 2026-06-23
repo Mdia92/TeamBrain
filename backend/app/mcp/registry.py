@@ -46,9 +46,11 @@ def get_mcp_registry() -> MCPRegistry:
         from app.mcp import (
             calendar_tools,
             document_tools,
+            field_reports_tools,
             meetings_tools,
             memory_tools,
             projects_tools,
+            tasks_tools,
             whatsapp_tools,
         )
 
@@ -57,5 +59,7 @@ def get_mcp_registry() -> MCPRegistry:
         document_tools.register(_registry)
         meetings_tools.register(_registry)
         projects_tools.register(_registry)
+        tasks_tools.register(_registry)
+        field_reports_tools.register(_registry)
         whatsapp_tools.register(_registry)
     return _registry

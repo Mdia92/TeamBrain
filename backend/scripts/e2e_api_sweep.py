@@ -7,6 +7,8 @@ import sys
 
 import httpx
 
+from app.config import settings
+
 BASE = "http://127.0.0.1:8010"
 
 
@@ -121,13 +123,18 @@ def main() -> int:
     if rd.status_code != 409:
         errors.append(f"dup signup expected 409 got {rd.status_code}")
 
-    # Login demo user + switch org test
-    lr = c.post("/api/auth/login", json={"email": "amadou@timtimol.sn", "password": "Timtimol2026!"})
-    if lr.status_code == 200:
-        h2 = {"Authorization": f"Bearer {lr.json()['access_token']}"}
-        orgs = c.get("/api/auth/orgs", headers=h2).json().get("items", [])
-        if not orgs:
-            errors.append("demo user has no orgs listed")
+    # Login demo user + switch org test (optional — requires SEED_DEMO_* in env)
+    demo_email = settings.seed_demo_email.strip()
+    demo_password = settings.seed_demo_password.strip()
+    if demo_email and demo_password:
+        lr = c.post("/api/auth/login", json={"email": demo_email, "password": demo_password})
+        if lr.status_code == 200:
+            h2 = {"Authorization": f"Bearer {lr.json()['access_token']}"}
+            orgs = c.get("/api/auth/orgs", headers=h2).json().get("items", [])
+            if not orgs:
+                errors.append("demo user has no orgs listed")
+        else:
+            errors.append(f"demo login failed: {lr.status_code}")
 
     if errors:
         print("ERRORS:")

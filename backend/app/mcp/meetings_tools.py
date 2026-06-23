@@ -33,6 +33,17 @@ def register(registry: MCPRegistry) -> None:
         ),
         _list_recent,
     )
+    registry.register(
+        MCPToolDefinition(
+            name="meetings_get_commitments",
+            description="Recent meeting commitments for the organization.",
+            input_schema={
+                "type": "object",
+                "properties": {"limit": {"type": "integer", "default": 10}},
+            },
+        ),
+        _get_commitments,
+    )
 
 
 async def _recent_decisions(*, arguments: dict[str, Any], context: dict[str, Any]) -> MCPToolResult:
@@ -71,3 +82,23 @@ async def _list_recent(*, arguments: dict[str, Any], context: dict[str, Any]) ->
     items = [dict(r) for r in rows]
     sources = [f"meeting:{r['id']}" for r in items[:5]]
     return MCPToolResult(success=True, content={"meetings": items}, sources=sources)
+
+
+async def _get_commitments(*, arguments: dict[str, Any], context: dict[str, Any]) -> MCPToolResult:
+    session = context["session"]
+    org_id = context["org_id"]
+    limit = arguments.get("limit", 10)
+    rows = (
+        await session.execute(
+            text(
+                "SELECT mc.id, mc.commitment_text, mc.deadline::text, m.title AS meeting_title"
+                " FROM meeting_commitments mc"
+                " JOIN meetings m ON m.id = mc.meeting_id"
+                " WHERE m.organization_id = CAST(:oid AS uuid)"
+                " ORDER BY m.date DESC LIMIT :lim"
+            ).bindparams(oid=org_id, lim=limit),
+        )
+    ).mappings().all()
+    items = [dict(r) for r in rows]
+    sources = [f"meeting_commitment:{r['id']}" for r in items[:5]]
+    return MCPToolResult(success=True, content={"commitments": items}, sources=sources)

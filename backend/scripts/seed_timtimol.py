@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import text
 
 from app.auth.passwords import hash_password
+from app.config import settings
 from app.db.session import SessionLocal
 
 ORG_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -35,6 +36,12 @@ PROJECTS = [
 
 
 async def seed() -> None:
+    if not settings.seed_demo_password:
+        raise SystemExit(
+            "SEED_DEMO_PASSWORD manquant dans backend/.env — "
+            "définissez un mot de passe local (jamais commité)."
+        )
+    demo_password = settings.seed_demo_password
     async with SessionLocal() as session:
         oid = str(ORG_ID)
         await session.execute(
@@ -124,7 +131,7 @@ async def seed() -> None:
                     name=name,
                     email=email,
                     role=role,
-                    ph=hash_password("Timtimol2026!"),
+                    ph=hash_password(demo_password),
                 ),
             )
             await session.execute(
@@ -252,7 +259,7 @@ async def seed() -> None:
             )
 
         await session.commit()
-        print("Timtimol seed complete. Login: amadou@timtimol.sn / Timtimol2026!")
+        print(f"Timtimol seed complete. Login: {settings.seed_demo_email} (mot de passe = SEED_DEMO_PASSWORD dans .env)")
 
 
 if __name__ == "__main__":
