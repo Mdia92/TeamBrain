@@ -29,6 +29,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { t } from "@/app/lib/i18n";
+import { getOrgTerm } from "@/app/lib/org-terminology";
 import { cn } from "@/app/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { PageHeader, type BreadcrumbItem } from "@/components/ui/page-header";
@@ -57,7 +58,7 @@ const NAV_GROUPS: { id: string; label: string; items: NavItem[] }[] = [
     id: "comm",
     label: "Communication",
     items: [
-      { href: "messages", label: t("messages"), icon: MessageSquare, module: null },
+      { href: "messages", label: t("messages"), icon: MessageSquare, module: "messages" },
       { href: "meetings", label: t("meetings"), icon: Mic, module: "meetings" },
     ],
   },
@@ -176,18 +177,26 @@ function OrgSwitcher({ orgSlug, compact }: { orgSlug: string; compact?: boolean 
   );
 }
 
+function navLabelFor(href: string, settings?: Record<string, unknown>, fallback?: string) {
+  if (href === "field-reports") return getOrgTerm(settings, "field_report");
+  if (href === "daily-status") return getOrgTerm(settings, "field_agent");
+  return fallback ?? href;
+}
+
 function SidebarNav({
   orgSlug,
   pathname,
   enabledModules,
   collapsedGroups,
   toggleGroup,
+  settings,
 }: {
   orgSlug: string;
   pathname: string;
   enabledModules: string[];
   collapsedGroups: Record<string, boolean>;
   toggleGroup: (id: string) => void;
+  settings?: Record<string, unknown>;
 }) {
   return (
     <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
@@ -222,7 +231,7 @@ function SidebarNav({
                         )}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
-                        {label}
+                        {navLabelFor(href, settings, label)}
                       </Link>
                     </li>
                   );
@@ -308,11 +317,12 @@ export function AppShell({
     "meetings",
     "documents",
     "calendar",
+    "messages",
     "whatsapp",
   ];
 
   const currentSegment = pathname.split("/").pop() ?? "dashboard";
-  const pageTitle = PAGE_TITLES[currentSegment] ?? currentSegment;
+  const pageTitle = navLabelFor(currentSegment, user?.settings, PAGE_TITLES[currentSegment] ?? currentSegment);
 
   const breadcrumbs: BreadcrumbItem[] = useMemo(
     () => [
@@ -346,6 +356,7 @@ export function AppShell({
             enabledModules={enabledModules}
             collapsedGroups={collapsedGroups}
             toggleGroup={toggleGroup}
+            settings={user?.settings}
           />
           <div className="border-t border-slate-800 p-3">
             <div className="flex items-center gap-2 rounded-input p-2">
@@ -375,6 +386,7 @@ export function AppShell({
                 enabledModules={enabledModules}
                 collapsedGroups={collapsedGroups}
                 toggleGroup={toggleGroup}
+                settings={user?.settings}
               />
             </aside>
           </>

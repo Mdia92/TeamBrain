@@ -1,4 +1,4 @@
-"""Messaging API with SSE."""
+"""Inbox-style messaging API."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import json
 import uuid
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -22,6 +22,7 @@ from app.trial import require_write_access
 router = APIRouter(prefix="/api/messages", tags=["messages"])
 
 _subscribers: dict[str, list[asyncio.Queue]] = defaultdict(list)
+ADMIN_ROLES = frozenset({"owner", "admin"})
 
 
 class MessageIn(BaseModel):
@@ -29,6 +30,224 @@ class MessageIn(BaseModel):
     content: str = Field(min_length=1)
     thread_parent_id: str | None = None
 
+
+class SendIn(BaseModel):
+    subject: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1)
+    recipient_ids: list[str] | None = None
+    broadcast: bool = False
+
+
+def _is_admin(user: dict) -> bool:
+    return user.get("role") in ADMIN_ROLES
+
+
+def _inbox_visibility_clause() -> str:
+    return (
+        " AND m.channel_id IS NULL"
+        " AND (m.sender_id = CAST(:uid AS uuid)"
+        " OR m.recipient_ids IS NULL"
+        " OR CAST(:uid AS uuid) = ANY(m.recipient_ids))"
+    )
+
+
+@router.get("/recipients")
+async def list_recipients(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    rows = (
+        await session.execute(
+            text(
+                "SELECT u.id, u.full_name, u.email, om.role"
+                " FROM org_memberships om"
+                " JOIN users u ON u.id = om.user_id"
+                " WHERE om.organization_id = CAST(:oid AS uuid) AND om.is_active = true"
+                " ORDER BY u.full_name"
+            ).bindparams(oid=str(user["organization_id"])),
+        )
+    ).mappings().all()
+    return {"items": [dict(r) for r in rows], "can_broadcast": _is_admin(user)}
+
+
+@router.get("/inbox")
+async def inbox_list(
+    filter: str = Query(default="all", pattern="^(all|unread|sent)$"),
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    uid = str(user["id"])
+    oid = str(user["organization_id"])
+    extra = ""
+    if filter == "unread":
+        extra = (
+            " AND NOT EXISTS (SELECT 1 FROM message_reads mr"
+            " WHERE mr.message_id = m.id AND mr.user_id = CAST(:uid AS uuid))"
+            " AND m.sender_id != CAST(:uid AS uuid)"
+        )
+    elif filter == "sent":
+        extra = " AND m.sender_id = CAST(:uid AS uuid)"
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT m.id, m.subject, m.content, m.sender_id, m.recipient_ids,"
+                " m.created_at, u.full_name AS sender_name,"
+                " EXISTS (SELECT 1 FROM message_reads mr"
+                "   WHERE mr.message_id = m.id AND mr.user_id = CAST(:uid AS uuid)) AS is_read"
+                " FROM messages m"
+                " JOIN users u ON u.id = m.sender_id"
+                " WHERE m.organization_id = CAST(:oid AS uuid)"
+                " AND m.thread_parent_id IS NULL"
+                f"{_inbox_visibility_clause()}{extra}"
+                " ORDER BY m.created_at DESC LIMIT 100"
+            ).bindparams(uid=uid, oid=oid),
+        )
+    ).mappings().all()
+
+    items = []
+    for r in rows:
+        item = dict(r)
+        item["preview"] = (item.get("content") or "")[:120]
+        item["is_unread"] = not item["is_read"] and str(item["sender_id"]) != uid
+        items.append(item)
+    return {"items": items}
+
+
+@router.get("/inbox/{message_id}")
+async def inbox_thread(
+    message_id: str,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    uid = str(user["id"])
+    oid = str(user["organization_id"])
+    root = (
+        await session.execute(
+            text(
+                "SELECT m.id, m.subject, m.content, m.sender_id, m.recipient_ids, m.created_at,"
+                " u.full_name AS sender_name"
+                " FROM messages m JOIN users u ON u.id = m.sender_id"
+                " WHERE m.id = CAST(:mid AS uuid) AND m.organization_id = CAST(:oid AS uuid)"
+                f"{_inbox_visibility_clause()}"
+            ).bindparams(mid=message_id, uid=uid, oid=oid),
+        )
+    ).mappings().first()
+    if not root:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Message introuvable")
+
+    thread_id = root["id"]
+    replies = (
+        await session.execute(
+            text(
+                "SELECT m.id, m.content, m.sender_id, m.created_at, u.full_name AS sender_name"
+                " FROM messages m JOIN users u ON u.id = m.sender_id"
+                " WHERE m.organization_id = CAST(:oid AS uuid)"
+                " AND (m.id = CAST(:tid AS uuid) OR m.thread_parent_id = CAST(:tid AS uuid))"
+                " ORDER BY m.created_at ASC"
+            ).bindparams(oid=oid, tid=str(thread_id)),
+        )
+    ).mappings().all()
+
+    await session.execute(
+        text(
+            "INSERT INTO message_reads (message_id, user_id)"
+            " SELECT CAST(:mid AS uuid), CAST(:uid AS uuid)"
+            " WHERE NOT EXISTS ("
+            "   SELECT 1 FROM message_reads WHERE message_id = CAST(:mid AS uuid)"
+            "   AND user_id = CAST(:uid AS uuid)"
+            " )"
+        ).bindparams(mid=message_id, uid=uid),
+    )
+    await session.commit()
+    return {"root": dict(root), "messages": [dict(r) for r in replies]}
+
+
+@router.post("/send", status_code=status.HTTP_201_CREATED)
+async def send_inbox_message(
+    body: SendIn,
+    user: dict = Depends(require_write_access),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    if body.broadcast:
+        if not _is_admin(user):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Seuls les administrateurs peuvent envoyer à toute l'équipe")
+        recipient_ids = None
+    elif body.recipient_ids is None:
+        if _is_admin(user):
+            recipient_ids = None
+        else:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Sélectionnez au moins un destinataire")
+    else:
+        recipient_ids = body.recipient_ids
+        if not recipient_ids:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Sélectionnez au moins un destinataire")
+
+    mid = uuid.uuid4()
+    oid = str(user["organization_id"])
+
+    await session.execute(
+        text(
+            "INSERT INTO messages (id, organization_id, channel_id, sender_id, subject, content,"
+            " recipient_ids) VALUES (CAST(:mid AS uuid), CAST(:oid AS uuid), NULL,"
+            " CAST(:uid AS uuid), :subject, :content, :rids)"
+        ).bindparams(
+            mid=str(mid),
+            oid=oid,
+            uid=str(user["id"]),
+            subject=body.subject,
+            content=body.content,
+            rids=recipient_ids,
+        ),
+    )
+
+    target = "toute l'équipe" if recipient_ids is None else f"{len(recipient_ids)} membre(s)"
+    preview = body.content[:120].replace("\n", " ")
+    brain = MemoryService(session)
+    await brain.write_memory(
+        org_id=oid,
+        type="episodic",
+        entity_type="message",
+        entity_id=str(mid),
+        note=f"Message « {body.subject} » à {target}: {preview}",
+        source_module="messages",
+        source_id=str(mid),
+    )
+    await session.commit()
+    return {"id": str(mid)}
+
+
+@router.patch("/{message_id}/read")
+async def mark_read(
+    message_id: str,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    uid = str(user["id"])
+    oid = str(user["organization_id"])
+    exists = (
+        await session.execute(
+            text(
+                "SELECT 1 FROM messages m WHERE m.id = CAST(:mid AS uuid)"
+                " AND m.organization_id = CAST(:oid AS uuid)"
+                f"{_inbox_visibility_clause()}"
+            ).bindparams(mid=message_id, uid=uid, oid=oid),
+        )
+    ).first()
+    if not exists:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Message introuvable")
+    await session.execute(
+        text(
+            "INSERT INTO message_reads (message_id, user_id)"
+            " VALUES (CAST(:mid AS uuid), CAST(:uid AS uuid))"
+            " ON CONFLICT DO NOTHING"
+        ).bindparams(mid=message_id, uid=uid),
+    )
+    await session.commit()
+    return {"read": True}
+
+
+# --- Legacy channel API (kept for backward compatibility) ---
 
 @router.get("/channels")
 async def list_channels(
@@ -48,7 +267,7 @@ async def list_channels(
 
 
 @router.get("/channels/{channel_id}")
-async def list_messages(
+async def list_channel_messages(
     channel_id: str,
     cursor: str | None = None,
     limit: int = Query(default=50, le=200),
@@ -83,7 +302,7 @@ async def list_messages(
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def send_message(
+async def send_channel_message(
     body: MessageIn,
     user: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),

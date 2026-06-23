@@ -1,4 +1,4 @@
-"""Dashboard KPIs and overview."""
+"""Dashboard KPIs, charts, and activity feeds."""
 
 from __future__ import annotations
 
@@ -10,9 +10,71 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
-from app.services.pending_actions import count_pending_actions
+from app.services.dashboard_stats import (
+    get_activity_chart,
+    get_member_contributions,
+    get_recent_activity,
+    get_stats,
+)
+from app.services.pending_actions import count_pending_actions, list_pending_actions
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+ADMIN_ROLES = frozenset({"owner", "admin"})
+
+
+def _is_admin(user: dict) -> bool:
+    return user.get("role") in ADMIN_ROLES
+
+
+async def _org_settings(session: AsyncSession, oid: str) -> dict:
+    row = (
+        await session.execute(
+            text("SELECT settings FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(oid=oid),
+        )
+    ).mappings().first()
+    settings = row["settings"] if row else {}
+    return settings if isinstance(settings, dict) else {}
+
+
+@router.get("/stats")
+async def dashboard_stats(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    oid = str(user["organization_id"])
+    settings = await _org_settings(session, oid)
+    return {
+        "stats": await get_stats(session, oid),
+        "team_size": settings.get("team_size", "1-10"),
+    }
+
+
+@router.get("/activity-chart")
+async def dashboard_activity_chart(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    oid = str(user["organization_id"])
+    return {"items": await get_activity_chart(session, oid)}
+
+
+@router.get("/member-contributions")
+async def dashboard_member_contributions(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    oid = str(user["organization_id"])
+    return {"items": await get_member_contributions(session, oid)}
+
+
+@router.get("/recent-activity")
+async def dashboard_recent_activity(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    oid = str(user["organization_id"])
+    return {"items": await get_recent_activity(session, oid)}
 
 
 @router.get("")
@@ -22,6 +84,8 @@ async def dashboard(
 ) -> dict:
     oid = str(user["organization_id"])
     week_ago = (datetime.now(UTC) - timedelta(days=7)).date()
+    settings = await _org_settings(session, oid)
+    checklist = settings.get("setup_checklist", {})
 
     active_projects = (
         await session.execute(
@@ -31,62 +95,6 @@ async def dashboard(
             ).bindparams(oid=oid),
         )
     ).scalar() or 0
-
-    tasks_done_week = (
-        await session.execute(
-            text(
-                "SELECT COUNT(*) FROM tasks WHERE organization_id = CAST(:oid AS uuid)"
-                " AND status = 'done' AND created_at >= :week"
-            ).bindparams(oid=oid, week=week_ago),
-        )
-    ).scalar() or 0
-
-    overdue_tasks = (
-        await session.execute(
-            text(
-                "SELECT COUNT(*) FROM tasks WHERE organization_id = CAST(:oid AS uuid)"
-                " AND status != 'done' AND due_date < CURRENT_DATE"
-            ).bindparams(oid=oid),
-        )
-    ).scalar() or 0
-
-    field_reports_week = (
-        await session.execute(
-            text(
-                "SELECT COUNT(*) FROM documents WHERE organization_id = CAST(:oid AS uuid)"
-                " AND doc_type = 'field_report' AND mission_date >= :week"
-            ).bindparams(oid=oid, week=week_ago),
-        )
-    ).scalar() or 0
-
-    upcoming = (
-        await session.execute(
-            text(
-                "SELECT id, title, due_date::text, priority, status FROM tasks"
-                " WHERE organization_id = CAST(:oid AS uuid) AND status != 'done'"
-                " AND due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'"
-                " ORDER BY due_date LIMIT 10"
-            ).bindparams(oid=oid),
-        )
-    ).mappings().all()
-
-    recent_reports = (
-        await session.execute(
-            text(
-                "SELECT id, location_name, mission_date::text, ai_summary FROM documents"
-                " WHERE organization_id = CAST(:oid AS uuid) AND doc_type = 'field_report'"
-                " ORDER BY created_at DESC LIMIT 5"
-            ).bindparams(oid=oid),
-        )
-    ).mappings().all()
-
-    org_settings = (
-        await session.execute(
-            text("SELECT settings FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(oid=oid),
-        )
-    ).mappings().first()
-    settings = org_settings["settings"] if org_settings else {}
-    checklist = settings.get("setup_checklist", {}) if isinstance(settings, dict) else {}
 
     project_count = (
         await session.execute(
@@ -118,16 +126,28 @@ async def dashboard(
         "first_meeting": meeting_count > 0,
     }
 
+    pending_items = await list_pending_actions(session, oid)
+    if not _is_admin(user):
+        pending_items = []
+
     return {
-        "kpis": {
-            "active_projects": active_projects,
-            "tasks_completed_week": tasks_done_week,
-            "overdue_tasks": overdue_tasks,
-            "field_reports_week": field_reports_week,
-        },
-        "upcoming_deadlines": [dict(r) for r in upcoming],
-        "recent_field_reports": [dict(r) for r in recent_reports],
+        "kpis": (await get_stats(session, oid)),
+        "team_size": settings.get("team_size", "1-10"),
         "setup_checklist": setup_checklist,
+        "pending_actions": pending_items[:5],
         "pending_actions_count": await count_pending_actions(session, oid),
+        "can_approve_pending": _is_admin(user),
         "generated_at": datetime.now(UTC).isoformat(),
+        "stats_legacy": {
+            "tasks_completed_week": (
+                await session.execute(
+                    text(
+                        "SELECT COUNT(*) FROM tasks WHERE organization_id = CAST(:oid AS uuid)"
+                        " AND status = 'done' AND updated_at >= :week"
+                    ).bindparams(oid=oid, week=week_ago),
+                )
+            ).scalar()
+            or 0,
+            "active_projects": active_projects,
+        },
     }

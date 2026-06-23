@@ -49,7 +49,10 @@ async def list_pending_actions(session: AsyncSession, org_id: str, *, limit: int
             ).bindparams(oid=org_id, lim=limit),
         )
     ).mappings().all()
-    return [dict(r) for r in rows]
+    return [
+        {**dict(r), "created_at": r["created_at"].isoformat() if r.get("created_at") else None}
+        for r in rows
+    ]
 
 
 async def count_pending_actions(session: AsyncSession, org_id: str) -> int:

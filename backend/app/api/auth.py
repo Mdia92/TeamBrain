@@ -34,7 +34,7 @@ REFRESH_COOKIE = "refresh_token"
 ACCESS_COOKIE = "tb_access"
 COOKIE_PATH = "/api/auth"
 
-ALL_MODULES = ("projects", "field-reports", "meetings", "documents", "calendar", "whatsapp")
+from app.services.industry_presets import ALL_MODULES, build_org_settings, preset_for_industry
 
 
 def _set_access_cookie(response: Response, token: str) -> None:
@@ -166,19 +166,18 @@ async def signup(
     user_id = uuid.uuid4()
     slug = _slugify(body.organization_name)
     lang = body.primary_language if body.primary_language in ("fr", "en", "wo") else "fr"
-    settings_json = {
-        "industry": body.industry,
-        "team_size": body.team_size,
-        "primary_language": body.primary_language,
-        "modules": list(ALL_MODULES),
-        "setup_checklist": {
+    settings_json = build_org_settings(
+        industry=body.industry,
+        team_size=body.team_size,
+        primary_language=body.primary_language,
+        setup_checklist={
             "profile_completed": False,
             "team_invited": False,
             "first_project": False,
             "first_field_report": False,
             "first_meeting": False,
         },
-    }
+    )
 
     await session.execute(
         text(
@@ -403,20 +402,21 @@ async def create_org_for_user(
     org_id = uuid.uuid4()
     slug = _slugify(body.organization_name)
     lang = body.primary_language if body.primary_language in ("fr", "en", "wo") else "fr"
-    modules = [m for m in body.modules if m in ALL_MODULES] or list(ALL_MODULES)
-    settings_json = {
-        "industry": body.industry,
-        "team_size": body.team_size,
-        "primary_language": body.primary_language,
-        "modules": modules,
-        "setup_checklist": {
+    preset = preset_for_industry(body.industry)
+    modules = [m for m in body.modules if m in ALL_MODULES] or preset["modules"]
+    settings_json = build_org_settings(
+        industry=body.industry,
+        team_size=body.team_size,
+        primary_language=body.primary_language,
+        modules=modules,
+        setup_checklist={
             "profile_completed": True,
             "team_invited": bool(body.invites),
             "first_project": False,
             "first_field_report": False,
             "first_meeting": False,
         },
-    }
+    )
     await session.execute(
         text(
             "INSERT INTO organizations (id, name, slug, plan, settings, language, owner_id,"
@@ -496,13 +496,16 @@ async def complete_onboarding(
     if isinstance(existing, str):
         existing = json.loads(existing)
 
-    modules = [m for m in body.modules if m in ALL_MODULES] or list(ALL_MODULES)
+    industry = body.industry or existing.get("industry", "other")
+    preset = preset_for_industry(industry)
+    modules = [m for m in body.modules if m in ALL_MODULES] or preset["modules"]
     settings_json = {
         **existing,
-        "industry": body.industry or existing.get("industry", "other"),
+        "industry": industry,
         "team_size": body.team_size or existing.get("team_size", "1-10"),
         "primary_language": body.primary_language or existing.get("primary_language", "fr"),
         "modules": modules,
+        "terminology": preset["terminology"],
         "setup_checklist": existing.get(
             "setup_checklist",
             {

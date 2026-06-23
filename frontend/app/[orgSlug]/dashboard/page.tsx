@@ -2,31 +2,50 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, FolderKanban, MapPin, Minus, X } from "lucide-react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowDownRight, ArrowUpRight, Minus, X } from "lucide-react";
 import { apiClient } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
+import { getTeamSizePreset } from "@/app/lib/org-terminology";
 import { t } from "@/app/lib/i18n";
+import { ActivityLineChart, MemberBarChart } from "@/components/dashboard/dashboard-charts";
+import { useCountUp } from "@/components/dashboard/use-count-up";
 import { PageHeader } from "@/components/ui/page-header";
 import { DashboardSkeleton } from "@/components/ui/skeleton";
+import { Avatar } from "@/components/ui/avatar";
 
-type DashboardData = {
-  kpis: {
-    active_projects: number;
-    tasks_completed_week: number;
-    overdue_tasks: number;
-    field_reports_week: number;
-  };
-  upcoming_deadlines: { id: string; title: string; due_date: string; priority: string }[];
-  recent_field_reports: { id: string; location_name: string; mission_date: string; ai_summary: string }[];
-  setup_checklist?: {
-    profile_completed: boolean;
-    team_invited: boolean;
-    first_project: boolean;
-    first_field_report: boolean;
-    first_meeting: boolean;
-  };
-  pending_actions_count?: number;
+type Stats = {
+  tasks_completed_week: number;
+  tasks_completed_week_change_pct: number | null;
+  active_projects: number;
+  documents_month: number;
+  documents_month_change_pct: number | null;
+  memory_count: number;
+  memory_growth_month: number;
+};
+
+type ActivityItem = {
+  type: string;
+  id: string;
+  label: string;
+  actor_name: string;
+  at: string;
+};
+
+type PendingAction = {
+  id: string;
+  action_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+type DashboardPayload = {
+  kpis: Stats;
+  team_size: string;
+  setup_checklist?: Record<string, boolean>;
+  pending_actions: PendingAction[];
+  pending_actions_count: number;
+  can_approve_pending: boolean;
 };
 
 const CHECKLIST_LABELS: Record<string, string> = {
@@ -37,20 +56,108 @@ const CHECKLIST_LABELS: Record<string, string> = {
   first_meeting: "Première réunion analysée",
 };
 
-function Trend({ value, invert }: { value: number; invert?: boolean }) {
-  const up = invert ? value > 0 : value >= 0;
-  const Icon = value === 0 ? Minus : up ? ArrowUpRight : ArrowDownRight;
-  const color = value === 0 ? "text-slate-400" : up ? "text-emerald-600" : "text-rose-600";
-  return <Icon className={`h-4 w-4 ${color}`} />;
+function TrendBadge({ pct }: { pct: number | null }) {
+  if (pct === null) return null;
+  const up = pct >= 0;
+  const Icon = pct === 0 ? Minus : up ? ArrowUpRight : ArrowDownRight;
+  const color = pct === 0 ? "text-slate-400" : up ? "text-emerald-600" : "text-rose-600";
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${color}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {Math.abs(pct)}%
+    </span>
+  );
+}
+
+function KpiCard({
+  label,
+  value,
+  trend,
+  suffix,
+}: {
+  label: string;
+  value: number;
+  trend?: number | null;
+  suffix?: string;
+}) {
+  const animated = useCountUp(value);
+  return (
+    <div className="tb-card p-6">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-slate-500">{label}</p>
+        {trend !== undefined && <TrendBadge pct={trend} />}
+      </div>
+      <p className="mt-2 text-3xl font-bold tracking-tight">
+        {animated}
+        {suffix && <span className="ml-1 text-lg font-normal text-slate-500">{suffix}</span>}
+      </p>
+    </div>
+  );
+}
+
+function relativeTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `il y a ${mins || 1} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `il y a ${days} j`;
+}
+
+function activityText(item: ActivityItem) {
+  const who = item.actor_name ?? "Quelqu'un";
+  switch (item.type) {
+    case "task":
+      return `${who} a complété la tâche « ${item.label} »`;
+    case "document":
+      return `${who} a ajouté le document « ${item.label} »`;
+    case "message":
+      return `${who} a envoyé « ${item.label} »`;
+    case "meeting":
+      return `${who} a enregistré la réunion « ${item.label} »`;
+    default:
+      return item.label;
+  }
+}
+
+function activityHref(orgSlug: string, item: ActivityItem) {
+  const base = `/${orgSlug}`;
+  switch (item.type) {
+    case "task":
+      return `${base}/tasks`;
+    case "document":
+      return `${base}/documents`;
+    case "message":
+      return `${base}/messages`;
+    case "meeting":
+      return `${base}/meetings`;
+    default:
+      return base;
+  }
+}
+
+function pendingLabel(action: PendingAction) {
+  const p = action.payload;
+  if (action.action_type === "create_task") return `Créer la tâche « ${p.title ?? "Sans titre"} »`;
+  if (action.action_type === "update_task_status") return `Mettre à jour une tâche`;
+  if (action.action_type === "whatsapp_send") return `Envoyer un message WhatsApp`;
+  return action.action_type;
 }
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const params = useParams();
+  const router = useRouter();
   const orgSlug = params.orgSlug as string;
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useState<DashboardPayload | null>(null);
+  const [chartData, setChartData] = useState<{ date: string; actions: number }[]>([]);
+  const [members, setMembers] = useState<{ full_name: string; actions: number }[]>([]);
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [checklistDismissed, setChecklistDismissed] = useState(false);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
 
+  const teamPreset = getTeamSizePreset(data?.team_size ?? (user?.settings?.team_size as string));
   const firstName = user?.full_name?.split(" ")[0] ?? "équipe";
   const today = new Date().toLocaleDateString("fr-FR", {
     weekday: "long",
@@ -58,32 +165,56 @@ export default function DashboardPage() {
     month: "long",
   });
 
+  async function loadDashboard() {
+    const [dash, chart, contrib, recent] = await Promise.all([
+      apiClient.get<DashboardPayload>("/api/dashboard"),
+      apiClient.get<{ items: { date: string; actions: number }[] }>("/api/dashboard/activity-chart"),
+      apiClient.get<{ items: { full_name: string; actions: number }[] }>("/api/dashboard/member-contributions"),
+      apiClient.get<{ items: ActivityItem[] }>("/api/dashboard/recent-activity"),
+    ]);
+    setData(dash);
+    setChartData(chart.items);
+    setMembers(contrib.items);
+    setActivity(recent.items);
+  }
+
   useEffect(() => {
-    apiClient.get<DashboardData>("/api/dashboard").then(setData).catch(console.error);
+    void loadDashboard().catch(console.error);
     setChecklistDismissed(localStorage.getItem(`tb-checklist-${orgSlug}`) === "done");
   }, [orgSlug]);
 
-  const activity = useMemo(() => {
+  async function handlePending(actionId: string, approve: boolean) {
+    setActionBusy(actionId);
+    try {
+      await apiClient.post(`/api/pending-actions/${actionId}/${approve ? "approve" : "reject"}`, {});
+      await loadDashboard();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  const kpis = useMemo(() => {
     if (!data) return [];
-    const items: { id: string; text: string; time: string; type: string }[] = [];
-    for (const d of data.upcoming_deadlines.slice(0, 5)) {
-      items.push({
-        id: `task-${d.id}`,
-        text: `Échéance : ${d.title}`,
-        time: d.due_date,
-        type: "task",
-      });
+    const s = data.kpis;
+    if (teamPreset === "simple") {
+      return [
+        { label: "Tâches complétées cette semaine", value: s.tasks_completed_week, trend: s.tasks_completed_week_change_pct },
+        { label: "Projets actifs", value: s.active_projects },
+      ];
     }
-    for (const r of data.recent_field_reports.slice(0, 5)) {
-      items.push({
-        id: `fr-${r.id}`,
-        text: `Rapport terrain : ${r.location_name || "Sans lieu"}`,
-        time: r.mission_date,
-        type: "field",
-      });
-    }
-    return items.slice(0, 10);
-  }, [data]);
+    return [
+      { label: "Tâches complétées cette semaine", value: s.tasks_completed_week, trend: s.tasks_completed_week_change_pct },
+      { label: "Projets actifs", value: s.active_projects },
+      { label: "Documents ajoutés ce mois", value: s.documents_month, trend: s.documents_month_change_pct },
+      {
+        label: "Mémoires du cerveau",
+        value: s.memory_count,
+        suffix: s.memory_growth_month > 0 ? `+${s.memory_growth_month}` : undefined,
+      },
+    ];
+  }, [data, teamPreset]);
 
   if (!data) return <DashboardSkeleton />;
 
@@ -91,35 +222,13 @@ export default function DashboardPage() {
   const checklistDone = checklist ? Object.values(checklist).every(Boolean) : true;
   const showChecklist = checklist && !checklistDone && !checklistDismissed;
 
-  const kpis = [
-    {
-      label: t("activeProjects"),
-      value: data.kpis.active_projects,
-      trend: data.kpis.active_projects > 0 ? 1 : 0,
-    },
-    {
-      label: t("tasksThisWeek"),
-      value: data.kpis.tasks_completed_week,
-      trend: data.kpis.tasks_completed_week > 0 ? 1 : 0,
-    },
-    {
-      label: t("overdueTasks"),
-      value: data.kpis.overdue_tasks,
-      trend: data.kpis.overdue_tasks,
-      alert: data.kpis.overdue_tasks > 0,
-      invert: true,
-    },
-    {
-      label: t("fieldReportsWeek"),
-      value: data.kpis.field_reports_week,
-      trend: data.kpis.field_reports_week > 0 ? 1 : 0,
-    },
-  ];
-
   function dismissChecklist() {
     localStorage.setItem(`tb-checklist-${orgSlug}`, "done");
     setChecklistDismissed(true);
   }
+
+  const showCharts = teamPreset !== "simple";
+  const showMemberChart = teamPreset === "full";
 
   return (
     <div className="space-y-6">
@@ -157,55 +266,38 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {data.pending_actions_count != null && data.pending_actions_count > 0 && (
-        <section className="tb-card border-primary/30 p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Actions en attente</h2>
-            <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-white">
-              {data.pending_actions_count}
-            </span>
-          </div>
-          <p className="mt-2 text-sm text-slate-500">
-            L&apos;assistant a des suggestions à valider — ouvrez l&apos;assistant pour approuver ou rejeter.
-          </p>
-          <Link href={`/${orgSlug}/assistant`} className="tb-btn-primary mt-4 inline-flex min-h-11">
-            Voir les suggestions →
-          </Link>
-        </section>
-      )}
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`grid gap-4 sm:grid-cols-2 ${teamPreset !== "simple" ? "xl:grid-cols-4" : ""}`}>
         {kpis.map((k) => (
-          <div
-            key={k.label}
-            className={`tb-card p-6 ${k.alert ? "border-rose-200 dark:border-rose-900" : ""}`}
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500">{k.label}</p>
-              <Trend value={k.trend} invert={k.invert} />
-            </div>
-            <p className="mt-2 text-3xl font-bold tracking-tight">{k.value}</p>
-          </div>
+          <KpiCard key={k.label} label={k.label} value={k.value} trend={k.trend} suffix={k.suffix} />
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="tb-card p-6">
-          <h2 className="font-semibold">{t("upcomingDeadlines")}</h2>
-          {data.upcoming_deadlines.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">Aucune échéance cette semaine</p>
-          ) : (
-            <ul className="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
-              {data.upcoming_deadlines.map((d) => (
-                <li key={d.id} className="flex items-center justify-between py-3 text-sm">
-                  <span className="font-medium">{d.title}</span>
-                  <span className="text-slate-500">{d.due_date}</span>
-                </li>
-              ))}
-            </ul>
+      {showCharts && (
+        <div className={`grid gap-6 ${showMemberChart ? "lg:grid-cols-2" : ""}`}>
+          <section className="tb-card p-6">
+            <h2 className="font-semibold">Activité de l&apos;équipe</h2>
+            <p className="text-sm text-slate-500">30 derniers jours</p>
+            <div className="mt-4">
+              <ActivityLineChart data={chartData} />
+            </div>
+          </section>
+          {showMemberChart && (
+            <section className="tb-card p-6">
+              <h2 className="font-semibold">Contributions par membre</h2>
+              <p className="text-sm text-slate-500">Top 5 ce mois</p>
+              <div className="mt-4">
+                {members.length === 0 ? (
+                  <p className="text-sm text-slate-500">Pas encore de contributions</p>
+                ) : (
+                  <MemberBarChart data={members} />
+                )}
+              </div>
+            </section>
           )}
-        </section>
+        </div>
+      )}
 
+      <div className="grid gap-6 lg:grid-cols-2">
         <section className="tb-card p-6">
           <h2 className="font-semibold">Activité récente</h2>
           {activity.length === 0 ? (
@@ -213,40 +305,79 @@ export default function DashboardPage() {
           ) : (
             <ul className="mt-4 space-y-3">
               {activity.map((a) => (
-                <li key={a.id} className="flex items-start gap-3 text-sm">
-                  <span className="mt-0.5 rounded-md bg-indigo-50 p-1.5 text-primary dark:bg-indigo-950">
-                    {a.type === "field" ? <MapPin className="h-3.5 w-3.5" /> : <FolderKanban className="h-3.5 w-3.5" />}
-                  </span>
-                  <div>
-                    <p>{a.text}</p>
-                    <p className="text-xs text-slate-500">{a.time}</p>
-                  </div>
+                <li key={`${a.type}-${a.id}`}>
+                  <button
+                    type="button"
+                    onClick={() => router.push(activityHref(orgSlug, a))}
+                    className="flex w-full items-start gap-3 rounded-input p-2 text-left text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    <Avatar name={a.actor_name ?? "?"} className="h-8 w-8 text-xs" />
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2">{activityText(a)}</p>
+                      <p className="text-xs text-slate-500">{relativeTime(a.at)}</p>
+                    </div>
+                  </button>
                 </li>
               ))}
             </ul>
           )}
         </section>
-      </div>
 
-      {data.recent_field_reports.length > 0 && (
         <section className="tb-card p-6">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Rapports terrain récents</h2>
-            <Link href={`/${orgSlug}/documents?tab=field_report`} className="text-sm text-primary hover:underline">
-              Voir tout →
-            </Link>
+            <h2 className="font-semibold">Actions en attente</h2>
+            {(data.pending_actions_count ?? 0) > 0 && (
+              <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-white">
+                {data.pending_actions_count}
+              </span>
+            )}
           </div>
-          <ul className="mt-4 space-y-3">
-            {data.recent_field_reports.map((r) => (
-              <li key={r.id} className="rounded-input border border-slate-100 p-3 dark:border-slate-800">
-                <span className="font-medium">{r.location_name}</span>
-                <span className="text-slate-500"> — {r.mission_date}</span>
-                {r.ai_summary && <p className="mt-1 text-sm text-slate-500 line-clamp-2">{r.ai_summary}</p>}
-              </li>
-            ))}
-          </ul>
+          {data.pending_actions.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500">Aucune action en attente</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {data.pending_actions.map((action) => (
+                <li
+                  key={action.id}
+                  className="rounded-input border border-slate-100 p-3 dark:border-slate-800"
+                >
+                  <p className="text-sm font-medium">{pendingLabel(action)}</p>
+                  <p className="text-xs text-slate-500">{relativeTime(action.created_at)}</p>
+                  {data.can_approve_pending ? (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        disabled={actionBusy === action.id}
+                        onClick={() => void handlePending(action.id, true)}
+                        className="tb-btn-primary h-8 px-3 text-xs"
+                      >
+                        Approuver
+                      </button>
+                      <button
+                        type="button"
+                        disabled={actionBusy === action.id}
+                        onClick={() => void handlePending(action.id, false)}
+                        className="tb-btn-secondary h-8 px-3 text-xs"
+                      >
+                        Rejeter
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                      En attente d&apos;approbation
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {data.pending_actions_count > 5 && (
+            <Link href={`/${orgSlug}/assistant`} className="mt-4 inline-block text-sm text-primary hover:underline">
+              Voir toutes les suggestions →
+            </Link>
+          )}
         </section>
-      )}
+      </div>
     </div>
   );
 }

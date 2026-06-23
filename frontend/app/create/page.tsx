@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState, KeyboardEvent } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { t } from "@/app/lib/i18n";
 import * as authApi from "@/app/lib/auth-api";
 import { MarketingFooter } from "@/components/marketing-shell";
+import { INDUSTRY_TERMINOLOGY, modulesForIndustry } from "@/app/lib/org-terminology";
 
 const INDUSTRIES = [
   { value: "ngo", label: "ONG" },
@@ -37,14 +38,15 @@ const MODULES = [
   { id: "meetings", label: "Réunions" },
   { id: "documents", label: "Documents" },
   { id: "calendar", label: "Calendrier" },
+  { id: "messages", label: "Messages" },
   { id: "whatsapp", label: "WhatsApp" },
 ];
 
 const ROLES = [
-  { value: "admin", label: "Admin" },
-  { value: "manager", label: "Manager" },
-  { value: "member", label: "Membre" },
-  { value: "field_agent", label: "Agent terrain" },
+  { value: "admin", label: "Admin", description: "Gère l'espace et approuve les actions" },
+  { value: "manager", label: "Manager", description: "Supervise les projets" },
+  { value: "member", label: "Membre", description: "Contribue aux tâches" },
+  { value: "field_agent", label: "Agent terrain", description: "Soumet rapports et photos depuis le terrain" },
 ];
 
 type InviteRow = { email: string; role: string };
@@ -64,8 +66,14 @@ export default function CreateOrgPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [invites, setInvites] = useState<InviteRow[]>([{ email: "", role: "member" }]);
-  const [modules, setModules] = useState<string[]>(MODULES.map((m) => m.id));
+  const [invites, setInvites] = useState<InviteRow[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("member");
+  const [modules, setModules] = useState<string[]>(modulesForIndustry("ngo"));
+
+  useEffect(() => {
+    setModules(modulesForIndustry(industry));
+  }, [industry]);
 
   async function handleFinish(e: FormEvent) {
     e.preventDefault();
@@ -116,6 +124,21 @@ export default function CreateOrgPage() {
     setModules((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
   }
 
+  function addInviteChip() {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email.includes("@") || invites.some((i) => i.email === email)) return;
+    setInvites([...invites, { email, role: inviteRole }]);
+    setInviteEmail("");
+  }
+
+  function onInviteKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addInviteChip();
+    }
+  }
+
+  const terms = INDUSTRY_TERMINOLOGY[industry] ?? INDUSTRY_TERMINOLOGY.other;
   const steps = isLoggedIn
     ? ["Organisation", "Inviter l'équipe", "Modules"]
     : ["Organisation", "Compte admin", "Inviter l'équipe", "Modules"];
@@ -245,27 +268,38 @@ export default function CreateOrgPage() {
           {step === inviteStep && (
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">Inviter l&apos;équipe</h1>
-              <p className="text-sm text-stone-500">Optionnel — vous pourrez inviter plus tard.</p>
-              {invites.map((inv, idx) => (
-                <div key={idx} className="flex gap-2">
+              <p className="text-sm text-stone-500">Optionnel — tapez un email et appuyez sur Entrée.</p>
+              <div className="rounded-lg border border-stone-200 p-3 dark:border-stone-700">
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {invites.map((inv) => (
+                    <span
+                      key={inv.email}
+                      className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs text-primary"
+                    >
+                      {inv.email}
+                      <span className="text-stone-500">({ROLES.find((r) => r.value === inv.role)?.label})</span>
+                      <button
+                        type="button"
+                        onClick={() => setInvites(invites.filter((i) => i.email !== inv.email))}
+                        className="ml-1 text-stone-400 hover:text-stone-600"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
                   <input
                     type="email"
                     placeholder="email@exemple.sn"
-                    value={inv.email}
-                    onChange={(e) => {
-                      const next = [...invites];
-                      next[idx] = { ...next[idx], email: e.target.value };
-                      setInvites(next);
-                    }}
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    onKeyDown={onInviteKeyDown}
                     className="flex-1 rounded-lg border border-stone-300 px-3 py-2 dark:border-stone-700 dark:bg-stone-800"
                   />
                   <select
-                    value={inv.role}
-                    onChange={(e) => {
-                      const next = [...invites];
-                      next[idx] = { ...next[idx], role: e.target.value };
-                      setInvites(next);
-                    }}
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value)}
                     className="rounded-lg border border-stone-300 px-2 py-2 dark:border-stone-700 dark:bg-stone-800"
                   >
                     {ROLES.map((r) => (
@@ -273,21 +307,23 @@ export default function CreateOrgPage() {
                     ))}
                   </select>
                 </div>
-              ))}
-              <button
-                type="button"
-                onClick={() => setInvites([...invites, { email: "", role: "member" }])}
-                className="text-sm text-amber-700 hover:underline"
-              >
-                + Ajouter une invitation
-              </button>
+              </div>
+              <ul className="space-y-2 text-xs text-stone-500">
+                {ROLES.map((r) => (
+                  <li key={r.value}>
+                    <strong>{r.label}:</strong> {r.description.replace("Agent terrain", terms.field_agent)}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
           {step === modulesStep && (
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">Modules actifs</h1>
-              <p className="text-sm text-stone-500">Les modules non cochés seront masqués du menu.</p>
+              <p className="text-sm text-stone-500">
+                Préréglage pour votre secteur — {terms.work_unit}, {terms.field_report.toLowerCase()}, etc.
+              </p>
               <div className="space-y-2">
                 {MODULES.map((m) => (
                   <label key={m.id} className="flex items-center gap-2">
@@ -296,7 +332,7 @@ export default function CreateOrgPage() {
                       checked={modules.includes(m.id)}
                       onChange={() => toggleModule(m.id)}
                     />
-                    {m.label}
+                    {m.id === "field-reports" ? terms.field_report : m.label}
                   </label>
                 ))}
               </div>
