@@ -90,7 +90,7 @@ cd backend
 pytest -q
 ruff check app tests scripts
 python scripts/e2e_api_sweep.py   # signup → onboarding → invite → project/tasks → assistant → memory
-alembic upgrade head              # includes 006_junction_rls for project_members RLS
+alembic upgrade head              # includes 008_merge_field_reports
 ```
 
 ```powershell

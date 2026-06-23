@@ -26,6 +26,10 @@ dependencies = [
     "apscheduler>=3.10",
     "authlib",
     "firebase-admin",
+    "pypdf",
+    "python-docx",
+    "openpyxl",
+    "python-pptx",
 ]
 
 [project.optional-dependencies]

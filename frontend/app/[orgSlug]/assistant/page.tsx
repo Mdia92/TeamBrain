@@ -2,10 +2,18 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ChevronDown, Mic, Send } from "lucide-react";
+import { useAuth } from "@/app/contexts/AuthContext";
 import { apiClient, ApiRequestError } from "@/app/lib/api";
 import { t } from "@/app/lib/i18n";
 import { cn } from "@/app/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+
+type PendingSuggestion = {
+  id: string;
+  action_type: string;
+  payload: Record<string, unknown>;
+  label: string;
+};
 
 type AssistantAnswer = {
   answer: string;
@@ -14,6 +22,15 @@ type AssistantAnswer = {
   sources: string[];
   api_configured?: boolean;
   actions_taken?: string[];
+  pending_suggestions?: PendingSuggestion[];
+};
+
+type PendingAction = {
+  id: string;
+  action_type: string;
+  payload: Record<string, unknown>;
+  label?: string;
+  created_at: string;
 };
 
 type ChatMessage = {
@@ -37,7 +54,11 @@ function confidenceBadgeClass(label: string): string {
 }
 
 export default function AssistantPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "owner" || user?.role === "admin";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
+  const [canApprove, setCanApprove] = useState(false);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -47,6 +68,36 @@ export default function AssistantPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  useEffect(() => {
+    apiClient
+      .get<{ items: PendingAction[]; can_approve: boolean }>("/api/pending-actions")
+      .then((r) => {
+        setPendingActions(r.items);
+        setCanApprove(r.can_approve);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function reviewAction(id: string, approve: boolean) {
+    const path = approve ? "approve" : "reject";
+    try {
+      await apiClient.post(`/api/pending-actions/${id}/${path}`);
+      setPendingActions((prev) => prev.filter((a) => a.id !== id));
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : "Erreur");
+    }
+  }
+
+  function suggestionLabel(a: PendingAction): string {
+    if (a.action_type === "create_task") {
+      return `Je suggère de créer la tâche « ${String(a.payload?.title ?? "")} »`;
+    }
+    if (a.action_type === "whatsapp_send") {
+      return `Je suggère d'envoyer un rappel WhatsApp à ${String(a.payload?.recipient_name ?? "")}`;
+    }
+    return `Suggestion: ${a.action_type}`;
+  }
 
   async function ask(q: string) {
     if (!q.trim() || loading) return;
@@ -61,6 +112,20 @@ export default function AssistantPage() {
         ...prev,
         { id: crypto.randomUUID(), role: "assistant", content: r.answer, meta: r },
       ]);
+      if (r.pending_suggestions?.length) {
+        if (isAdmin) {
+          setPendingActions((prev) => [
+            ...r.pending_suggestions!.map((s) => ({
+              id: s.id,
+              action_type: s.action_type,
+              payload: s.payload,
+              label: s.label,
+              created_at: new Date().toISOString(),
+            })),
+            ...prev,
+          ]);
+        }
+      }
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Erreur de l'assistant");
     } finally {
@@ -81,6 +146,38 @@ export default function AssistantPage() {
       />
 
       <div className="tb-card flex flex-1 flex-col overflow-hidden">
+        {pendingActions.length > 0 && (
+          <div className="space-y-2 border-b border-slate-200 p-4 dark:border-slate-800">
+            <p className="text-xs font-semibold uppercase text-slate-500">Actions en attente</p>
+            {pendingActions.map((a) => (
+              <div key={a.id} className="rounded-input border border-slate-200 p-3 text-sm dark:border-slate-700">
+                <p>{a.label ?? suggestionLabel(a)}</p>
+                {canApprove ? (
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void reviewAction(a.id, true)}
+                      className="tb-btn-primary h-8 px-3 text-xs"
+                    >
+                      ✓ Approuver
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void reviewAction(a.id, false)}
+                      className="tb-btn-secondary h-8 px-3 text-xs"
+                    >
+                      ✗ Rejeter
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Suggestion envoyée à l&apos;administrateur pour approbation
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex-1 space-y-4 overflow-y-auto p-4 md:p-6">
           {messages.length === 0 && !loading && (
             <div className="flex h-full flex-col items-center justify-center text-center text-slate-500">

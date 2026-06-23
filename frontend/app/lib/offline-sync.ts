@@ -174,6 +174,7 @@ export async function getPendingCount(): Promise<number> {
 
 function entityTypeForPath(method: string, path: string): string | null {
   if (method === "POST" && path === "/api/field-reports") return "field_report";
+  if (method === "POST" && path === "/api/documents/field-report") return "field_report";
   if (method === "POST" && path === "/api/tasks") return "task_create";
   if (method === "PATCH" && /^\/api\/tasks\/[^/]+\/status$/.test(path)) return "task_status";
   if (method === "POST" && path === "/api/projects") return "project_create";

@@ -7,12 +7,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.llm_client import generate_text, llm_configured
 from app.agents.memory_service import MemoryService
 from app.mcp.client import MCPClient
+from app.services.pending_actions import create_pending_action
 
 SIMILARITY_THRESHOLD = 0.6
 ACTION_CONFIDENCE_MIN = 0.6
@@ -38,8 +38,17 @@ class AgentResult:
     sources: list[str]
     model: str
     actions_taken: list[str] = field(default_factory=list)
+    pending_suggestions: list[dict[str, Any]] = field(default_factory=list)
     api_configured: bool = True
     grounded: bool = True
+
+
+TOOL_TO_ACTION = {
+    "tasks_create": "create_task",
+    "whatsapp_send_reminder": "whatsapp_send",
+    "tasks_update_status": "update_task_status",
+    "projects_create": "create_project",
+}
 
 
 def confidence_label(score: float) -> str:
@@ -124,53 +133,15 @@ async def _plan(question: str) -> AgentPlan:
     return AgentPlan(steps=steps, intent="answer")
 
 
-async def _verify_action(
-    session: AsyncSession,
-    org_id: str,
-    tool: str,
-    result: Any,
-    mcp: MCPClient,
-    user_id: str | None,
-) -> tuple[bool, str]:
-    """Re-query DB after Act to confirm side effects."""
-    content = result.content or {}
-    if tool == "tasks_create":
-        tid = content.get("task_id")
-        if not tid:
-            return False, "Action failed: task id missing"
-        row = (
-            await session.execute(
-                text(
-                    "SELECT id FROM tasks WHERE id = CAST(:tid AS uuid)"
-                    " AND organization_id = CAST(:oid AS uuid)"
-                ).bindparams(tid=tid, oid=org_id),
-            )
-        ).first()
-        return (bool(row), "Action verified: task created" if row else "Action failed: task not found")
-
-    if tool == "whatsapp_send_reminder":
-        if result.success and content.get("sent", {}).get("status") not in ("not_configured", None):
-            return True, "Action verified: WhatsApp send attempted"
-        if content.get("sent", {}).get("status") == "not_configured":
-            return False, "Action failed: WhatsApp not configured"
-        return result.success, (
-            "Action verified: WhatsApp reminder logged" if result.success else "Action failed: WhatsApp send timeout"
-        )
-
-    if tool == "projects_create":
-        pid = content.get("project_id")
-        if not pid:
-            return False, "Action failed: project id missing"
-        row = (
-            await session.execute(
-                text("SELECT id FROM projects WHERE id = CAST(:pid AS uuid) AND organization_id = CAST(:oid AS uuid)").bindparams(
-                    pid=pid, oid=org_id
-                ),
-            )
-        ).first()
-        return (bool(row), "Action verified: project created" if row else "Action failed: project not found")
-
-    return result.success, f"Action verified: {tool}" if result.success else f"Action failed: {tool}"
+def _suggestion_label(action_type: str, payload: dict[str, Any]) -> str:
+    if action_type == "create_task":
+        return f"Créer la tâche « {payload.get('title', 'Sans titre')} »"
+    if action_type == "whatsapp_send":
+        who = payload.get("recipient_name", "destinataire")
+        return f"Envoyer un rappel WhatsApp à {who}"
+    if action_type == "update_task_status":
+        return f"Mettre à jour le statut de la tâche {payload.get('task_id', '')}"
+    return f"Action suggérée: {action_type}"
 
 
 async def _log_verification(session: AsyncSession, org_id: str, note: str) -> None:
@@ -212,6 +183,7 @@ async def run_agent(
     context_parts: list[str] = []
     all_sources: list[str] = []
     actions_taken: list[str] = []
+    pending_suggestions: list[dict[str, Any]] = []
     strong_hits = 0
     has_structured_data = False
 
@@ -276,29 +248,33 @@ async def run_agent(
         elif step["action"] == "act":
             tool = step["tool"]
             args = step.get("args", {})
-            result = await mcp.call_tool(tool, args, session=session, org_id=org_id, user_id=user_id)
-            if not result.success:
-                retry = await mcp.call_tool(tool, args, session=session, org_id=org_id, user_id=user_id)
-                if retry.success:
-                    result = retry
-            if result.success:
-                verified, vnote = await _verify_action(session, org_id, tool, result, mcp, user_id)
-                if not verified:
-                    retry = await mcp.call_tool(tool, args, session=session, org_id=org_id, user_id=user_id)
-                    verified, vnote = await _verify_action(session, org_id, tool, retry, mcp, user_id)
-                    if retry.success:
-                        result = retry
-                await _log_verification(session, org_id, vnote)
-                if tool == "tasks_create" and result.content.get("task_id"):
-                    actions_taken.append(f"Tâche créée: {result.content['task_id']} ({vnote})")
-                elif tool == "whatsapp_send_reminder":
-                    actions_taken.append(f"Rappel WhatsApp: {vnote}")
-                else:
-                    actions_taken.append(f"{tool}: {result.content} ({vnote})")
-                all_sources.extend(result.sources)
-            else:
-                await _log_verification(session, org_id, f"Action failed: {tool} — {result.error or 'erreur'}")
-                actions_taken.append(f"{tool} échoué: {result.error or 'erreur inconnue'}")
+            action_type = TOOL_TO_ACTION.get(tool, tool)
+            payload = dict(args)
+            if tool == "whatsapp_send_reminder":
+                payload = {
+                    "recipient_name": args.get("recipient_name"),
+                    "message": args.get("message"),
+                }
+            elif tool == "tasks_create":
+                payload = {"title": args.get("title", question[:200]), "project_id": args.get("project_id")}
+            action_id = await create_pending_action(
+                session,
+                org_id=org_id,
+                action_type=action_type,
+                payload=payload,
+                suggested_by="assistant",
+            )
+            label = _suggestion_label(action_type, payload)
+            pending_suggestions.append(
+                {
+                    "id": action_id,
+                    "action_type": action_type,
+                    "payload": payload,
+                    "label": label,
+                }
+            )
+            actions_taken.append(f"Suggestion en attente: {label}")
+            await _log_verification(session, org_id, f"Suggestion créée ({action_type}): {action_id}")
 
     proj_result = await mcp.call_tool("projects_list", {}, session=session, org_id=org_id, user_id=user_id)
     project_rows = proj_result.content.get("projects", []) if proj_result.success else []
@@ -332,7 +308,7 @@ async def run_agent(
     )
     prompt = f"Contexte:\n{context}\n\nQuestion: {question}"
     if actions_taken:
-        prompt += f"\n\nActions déjà exécutées: {actions_taken}"
+        prompt += f"\n\nSuggestions créées (en attente d'approbation admin): {actions_taken}"
 
     raw, model = await generate_text(prompt, system)
     confidence = 0.5
@@ -363,5 +339,6 @@ async def run_agent(
         sources=sources,
         model=model,
         actions_taken=actions_taken,
+        pending_suggestions=pending_suggestions,
         grounded=True,
     )

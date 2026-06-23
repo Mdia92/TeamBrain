@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
+from app.services.pending_actions import count_pending_actions
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -52,8 +53,8 @@ async def dashboard(
     field_reports_week = (
         await session.execute(
             text(
-                "SELECT COUNT(*) FROM field_reports WHERE organization_id = CAST(:oid AS uuid)"
-                " AND mission_date >= :week"
+                "SELECT COUNT(*) FROM documents WHERE organization_id = CAST(:oid AS uuid)"
+                " AND doc_type = 'field_report' AND mission_date >= :week"
             ).bindparams(oid=oid, week=week_ago),
         )
     ).scalar() or 0
@@ -72,8 +73,9 @@ async def dashboard(
     recent_reports = (
         await session.execute(
             text(
-                "SELECT id, location_name, mission_date::text, ai_summary FROM field_reports"
-                " WHERE organization_id = CAST(:oid AS uuid) ORDER BY created_at DESC LIMIT 5"
+                "SELECT id, location_name, mission_date::text, ai_summary FROM documents"
+                " WHERE organization_id = CAST(:oid AS uuid) AND doc_type = 'field_report'"
+                " ORDER BY created_at DESC LIMIT 5"
             ).bindparams(oid=oid),
         )
     ).mappings().all()
@@ -93,7 +95,10 @@ async def dashboard(
     ).scalar() or 0
     report_count = (
         await session.execute(
-            text("SELECT COUNT(*) FROM field_reports WHERE organization_id = CAST(:oid AS uuid)").bindparams(oid=oid),
+            text(
+                "SELECT COUNT(*) FROM documents WHERE organization_id = CAST(:oid AS uuid)"
+                " AND doc_type = 'field_report'"
+            ).bindparams(oid=oid),
         )
     ).scalar() or 0
     meeting_count = (
@@ -123,5 +128,6 @@ async def dashboard(
         "upcoming_deadlines": [dict(r) for r in upcoming],
         "recent_field_reports": [dict(r) for r in recent_reports],
         "setup_checklist": setup_checklist,
+        "pending_actions_count": await count_pending_actions(session, oid),
         "generated_at": datetime.now(UTC).isoformat(),
     }

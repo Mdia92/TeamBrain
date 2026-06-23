@@ -20,14 +20,21 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             UNIQUE (user_id, token)
-        );
-        CREATE INDEX IF NOT EXISTS ix_device_tokens_user_id ON device_tokens(user_id);
-        ALTER TABLE device_tokens ENABLE ROW LEVEL SECURITY;
-        CREATE POLICY device_tokens_org ON device_tokens
-            USING (organization_id = current_setting('app.organization_id', true)::uuid);
+        )
+        """
+    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_device_tokens_user_id ON device_tokens(user_id)")
+    op.execute("ALTER TABLE device_tokens ENABLE ROW LEVEL SECURITY")
+    op.execute(
+        """
+        DO $$ BEGIN
+            CREATE POLICY device_tokens_org ON device_tokens
+                USING (organization_id = current_setting('app.organization_id', true)::uuid);
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
         """
     )
 
 
 def downgrade() -> None:
-    op.execute("DROP TABLE IF EXISTS device_tokens CASCADE;")
+    op.execute("DROP TABLE IF EXISTS device_tokens CASCADE")

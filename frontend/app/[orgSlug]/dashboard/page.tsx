@@ -26,6 +26,7 @@ type DashboardData = {
     first_field_report: boolean;
     first_meeting: boolean;
   };
+  pending_actions_count?: number;
 };
 
 const CHECKLIST_LABELS: Record<string, string> = {
@@ -156,6 +157,23 @@ export default function DashboardPage() {
         </section>
       )}
 
+      {data.pending_actions_count != null && data.pending_actions_count > 0 && (
+        <section className="tb-card border-primary/30 p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Actions en attente</h2>
+            <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-white">
+              {data.pending_actions_count}
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-slate-500">
+            L&apos;assistant a des suggestions à valider — ouvrez l&apos;assistant pour approuver ou rejeter.
+          </p>
+          <Link href={`/${orgSlug}/assistant`} className="tb-btn-primary mt-4 inline-flex min-h-11">
+            Voir les suggestions →
+          </Link>
+        </section>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k) => (
           <div
@@ -214,7 +232,7 @@ export default function DashboardPage() {
         <section className="tb-card p-6">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Rapports terrain récents</h2>
-            <Link href={`/${orgSlug}/field-reports`} className="text-sm text-primary hover:underline">
+            <Link href={`/${orgSlug}/documents?tab=field_report`} className="text-sm text-primary hover:underline">
               Voir tout →
             </Link>
           </div>

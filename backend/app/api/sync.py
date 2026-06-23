@@ -29,24 +29,41 @@ class SyncPushIn(BaseModel):
 
 
 async def _apply_field_report(session: AsyncSession, user: dict, p: dict) -> None:
+    from datetime import date as date_type
+
+    mdate = p.get("mission_date") or date_type.today().isoformat()
+    title = p.get("location_name") or "Rapport terrain"
     await session.execute(
         text(
-            "INSERT INTO field_reports (id, organization_id, project_id, submitted_by,"
-            " mission_date, location_name, latitude, longitude, description, photos, synced_at)"
-            " VALUES (gen_random_uuid(), CAST(:oid AS uuid), CAST(:pid AS uuid),"
-            " CAST(:uid AS uuid), CAST(:mdate AS date), :loc, :lat, :lng, :desc,"
-            " CAST(:photos AS jsonb), now())"
+            "INSERT INTO documents (id, organization_id, project_id, title, file_url, content_type,"
+            " file_size, ocr_text, tags, uploaded_by, doc_type, gps_latitude, gps_longitude,"
+            " location_name, mission_date, synced_at, submitted_by)"
+            " VALUES (gen_random_uuid(), CAST(:oid AS uuid), CAST(:pid AS uuid), :title,"
+            " 'inline://field-report/sync', 'text/plain', 0, :desc, CAST(:photos AS jsonb),"
+            " CAST(:uid AS uuid), 'field_report', :lat, :lng, :loc, CAST(:mdate AS date), now(),"
+            " CAST(:uid AS uuid))"
         ).bindparams(
             oid=str(user["organization_id"]),
             pid=p.get("project_id"),
-            uid=str(user["id"]),
-            mdate=p.get("mission_date"),
-            loc=p.get("location_name"),
-            lat=p.get("latitude"),
-            lng=p.get("longitude"),
+            title=title,
             desc=p.get("description"),
             photos=json.dumps(p.get("photos") or []),
+            uid=str(user["id"]),
+            lat=p.get("latitude"),
+            lng=p.get("longitude"),
+            loc=p.get("location_name"),
+            mdate=mdate,
         ),
+    )
+    brain = MemoryService(session)
+    await brain.write_memory(
+        org_id=str(user["organization_id"]),
+        type="episodic",
+        entity_type="document",
+        entity_id=None,
+        note=f"Rapport terrain synchronisé: {title}",
+        source_module="documents",
+        source_id=None,
     )
 
 

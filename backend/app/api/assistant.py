@@ -45,6 +45,7 @@ async def ask(
         "sources": result.sources,
         "model": result.model,
         "actions_taken": result.actions_taken,
+        "pending_suggestions": result.pending_suggestions,
         "api_configured": result.api_configured,
         "grounded": result.grounded,
     }

@@ -22,6 +22,7 @@ from app.api import (
     messages,
     notifications,
     organizations,
+    pending_actions,
     projects,
     sync,
     tasks,
@@ -76,6 +77,7 @@ app.include_router(members.router)
 app.include_router(invites.router)
 app.include_router(memory.router)
 app.include_router(notifications.router)
+app.include_router(pending_actions.router)
 app.include_router(organizations.router)
 
 

@@ -128,9 +128,9 @@ async def job_field_report_gap_alerts(session: AsyncSession) -> int:
                 "   )"
                 " WHERE om.role = 'field_agent' AND u.is_active = true AND om.is_active = true"
                 " AND NOT EXISTS ("
-                "   SELECT 1 FROM field_reports fr"
-                "   WHERE fr.submitted_by = u.id"
-                "   AND fr.mission_date >= CURRENT_DATE - INTERVAL '7 days'"
+                "   SELECT 1 FROM documents d"
+                "   WHERE d.submitted_by = u.id AND d.doc_type = 'field_report'"
+                "   AND d.mission_date >= CURRENT_DATE - INTERVAL '7 days'"
                 " )"
             ),
         )

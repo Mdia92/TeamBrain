@@ -1,4 +1,4 @@
-"""MCP tools for field reports."""
+"""MCP tools for field reports (unified documents)."""
 
 from __future__ import annotations
 
@@ -42,16 +42,16 @@ async def _list_recent(*, arguments: dict[str, Any], context: dict[str, Any]) ->
     rows = (
         await session.execute(
             text(
-                "SELECT fr.id, fr.mission_date::text, fr.location_name, fr.report_type,"
+                "SELECT d.id, d.mission_date::text, d.location_name, d.doc_type AS report_type,"
                 " u.full_name AS agent_name"
-                " FROM field_reports fr JOIN users u ON u.id = fr.submitted_by"
-                " WHERE fr.organization_id = CAST(:oid AS uuid)"
-                " ORDER BY fr.mission_date DESC LIMIT :lim"
+                " FROM documents d JOIN users u ON u.id = d.submitted_by"
+                " WHERE d.organization_id = CAST(:oid AS uuid) AND d.doc_type = 'field_report'"
+                " ORDER BY d.mission_date DESC NULLS LAST LIMIT :lim"
             ).bindparams(oid=org_id, lim=limit),
         )
     ).mappings().all()
     items = [dict(r) for r in rows]
-    sources = [f"field_report:{r['id']}" for r in items[:5]]
+    sources = [f"document:{r['id']}" for r in items[:5]]
     return MCPToolResult(success=True, content={"reports": items}, sources=sources)
 
 
@@ -62,15 +62,15 @@ async def _gaps_by_agent(*, arguments: dict[str, Any], context: dict[str, Any]) 
     rows = (
         await session.execute(
             text(
-                "SELECT u.id, u.full_name, MAX(fr.mission_date)::text AS last_report"
+                "SELECT u.id, u.full_name, MAX(d.mission_date)::text AS last_report"
                 " FROM users u"
                 " JOIN org_memberships om ON om.user_id = u.id AND om.organization_id = CAST(:oid AS uuid)"
-                " LEFT JOIN field_reports fr ON fr.submitted_by = u.id"
-                " AND fr.organization_id = CAST(:oid AS uuid)"
+                " LEFT JOIN documents d ON d.submitted_by = u.id"
+                " AND d.organization_id = CAST(:oid AS uuid) AND d.doc_type = 'field_report'"
                 " WHERE om.is_active = true AND u.role = 'field_agent'"
                 " GROUP BY u.id, u.full_name"
-                " HAVING MAX(fr.mission_date) IS NULL"
-                " OR MAX(fr.mission_date) < CURRENT_DATE - CAST(:days AS integer) * INTERVAL '1 day'"
+                " HAVING MAX(d.mission_date) IS NULL"
+                " OR MAX(d.mission_date) < CURRENT_DATE - CAST(:days AS integer) * INTERVAL '1 day'"
             ).bindparams(oid=org_id, days=days),
         )
     ).mappings().all()
