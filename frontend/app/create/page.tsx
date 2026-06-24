@@ -126,7 +126,16 @@ export default function CreateOrgPage() {
 
   function addInviteChip() {
     const email = inviteEmail.trim().toLowerCase();
-    if (!email.includes("@") || invites.some((i) => i.email === email)) return;
+    if (!email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Email invalide");
+      return;
+    }
+    if (invites.some((i) => i.email === email)) {
+      setError("Cet email est déjà dans la liste");
+      return;
+    }
+    setError("");
     setInvites([...invites, { email, role: inviteRole }]);
     setInviteEmail("");
   }

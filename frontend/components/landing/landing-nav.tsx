@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { User } from "@/app/lib/api";
 import { cn } from "@/app/lib/utils";
 import { TeamBrainLogo } from "@/components/marketing-shell";
 
-export function LandingNav({ dark = false }: { dark?: boolean }) {
+export function LandingNav({ dark = false, user = null }: { dark?: boolean; user?: User | null }) {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -20,6 +21,8 @@ export function LandingNav({ dark = false }: { dark?: boolean }) {
   const linkClass = dark
     ? "text-slate-300 hover:text-white"
     : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white";
+
+  const dashboardHref = user?.org_slug ? `/${user.org_slug}/dashboard` : "/login";
 
   return (
     <header
@@ -41,12 +44,23 @@ export function LandingNav({ dark = false }: { dark?: boolean }) {
           <a href="#pricing" className={cn("text-sm font-medium", linkClass)}>
             Tarifs
           </a>
-          <Link href="/login" className={cn("text-sm font-medium", linkClass)}>
-            Se connecter
-          </Link>
-          <Link href="/create" className="tb-btn-primary h-10 px-4 text-sm">
-            Essai gratuit
-          </Link>
+          {user ? (
+            <Link
+              href={dashboardHref}
+              className="tb-btn-primary h-10 px-4 text-sm"
+            >
+              Tableau de bord
+            </Link>
+          ) : (
+            <>
+              <Link href="/login" className={cn("text-sm font-medium", linkClass)}>
+                Se connecter
+              </Link>
+              <Link href="/create" className="tb-btn-primary h-10 px-4 text-sm">
+                Essai gratuit
+              </Link>
+            </>
+          )}
         </nav>
         <button
           type="button"
@@ -66,12 +80,20 @@ export function LandingNav({ dark = false }: { dark?: boolean }) {
             <a href="#pricing" className="text-sm text-slate-200" onClick={() => setOpen(false)}>
               Tarifs
             </a>
-            <Link href="/login" className="text-sm text-slate-200">
-              Se connecter
-            </Link>
-            <Link href="/create" className="tb-btn-primary h-10 text-center text-sm">
-              Essai gratuit
-            </Link>
+            {user ? (
+              <Link href={dashboardHref} className="tb-btn-primary h-10 text-center text-sm">
+                Tableau de bord
+              </Link>
+            ) : (
+              <>
+                <Link href="/login" className="text-sm text-slate-200">
+                  Se connecter
+                </Link>
+                <Link href="/create" className="tb-btn-primary h-10 text-center text-sm">
+                  Essai gratuit
+                </Link>
+              </>
+            )}
           </nav>
         </div>
       )}

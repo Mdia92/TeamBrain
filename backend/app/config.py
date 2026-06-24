@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     paydunya_token: str = ""
     paydunya_mode: Literal["sandbox", "live"] = "sandbox"
 
+    # Assistant personality (Xam = « savoir » en wolof)
+    assistant_name: str = "Xam"
+    assistant_personality: str = ""
+
     # Local demo seed only — never commit real values (set in .env)
     seed_demo_email: str = "amadou@timtimol.sn"
     seed_demo_password: str = ""

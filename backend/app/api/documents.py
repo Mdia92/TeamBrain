@@ -162,6 +162,12 @@ async def upload_document(
     doc_id = uuid.uuid4()
     content = await file.read()
     filename = file.filename or "document"
+    fmt = detect_format(filename, file.content_type)
+    if fmt == "unknown":
+        raise HTTPException(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            "Format de fichier non supporté — utilisez PDF, Word, Excel, PowerPoint, texte ou image",
+        )
     storage = get_storage()
     key = f"{user['organization_id']}/documents/{doc_id}/{filename}"
     file_url = await storage.upload(key, content, file.content_type)

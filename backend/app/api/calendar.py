@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from pydantic import BaseModel, Field
@@ -34,11 +34,38 @@ class EventIn(BaseModel):
 async def list_events(
     cursor: str | None = None,
     limit: int = Query(default=50, le=100),
+    from_date: date | None = Query(default=None, alias="from"),
+    to_date: date | None = Query(default=None, alias="to"),
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
+    params: dict = {"oid": str(user["organization_id"]), "lim": limit + 1}
+    range_clause = ""
+    if from_date:
+        range_clause += " AND e.start_datetime >= CAST(:from_d AS timestamptz)"
+        params["from_d"] = datetime.combine(from_date, datetime.min.time())
+    if to_date:
+        range_clause += " AND e.start_datetime < CAST(:to_d AS timestamptz)"
+        params["to_d"] = datetime.combine(to_date + timedelta(days=1), datetime.min.time())
+
+    if from_date or to_date:
+        rows = [
+            dict(r)
+            for r in (
+                await session.execute(
+                    text(
+                        "SELECT e.id, e.title, e.project_id, e.event_type, e.start_datetime,"
+                        " e.end_datetime, e.location, e.description"
+                        " FROM events e WHERE e.organization_id = CAST(:oid AS uuid)"
+                        f"{range_clause} ORDER BY e.start_datetime ASC, e.id ASC LIMIT :lim"
+                    ).bindparams(**params),
+                )
+            ).mappings().all()
+        ]
+        return {"items": rows, "next_cursor": None, "has_more": False}
+
     cc, cparams = cursor_clause(cursor, time_field="start_datetime", id_field="id")
-    params: dict = {"oid": str(user["organization_id"]), "lim": limit + 1, **cparams}
+    params.update(cparams)
     rows = [
         dict(r)
         for r in (

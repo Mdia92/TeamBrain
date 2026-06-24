@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     accessTokenRef.current = null;
     setUser(null);
-    router.push("/login");
+    router.push("/");
   }, [router]);
 
   const login = useCallback(async (email: string, password: string) => {

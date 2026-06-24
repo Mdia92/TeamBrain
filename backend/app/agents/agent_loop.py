@@ -11,10 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.llm_client import generate_text, llm_configured
 from app.agents.memory_service import MemoryService
+from app.agents.personality import assistant_system_prompt, uncertainty_prefix
+from app.policy import PolicyService
 from app.mcp.client import MCPClient
 from app.services.pending_actions import create_pending_action
 
-SIMILARITY_THRESHOLD = 0.6
+SIMILARITY_THRESHOLD = 0.6  # fallback when policy unavailable
 ACTION_CONFIDENCE_MIN = 0.6
 
 REMINDER_PATTERNS = (
@@ -109,7 +111,7 @@ async def _plan(question: str) -> AgentPlan:
         steps.append({"action": "act", "tool": "tasks_create", "args": {"title": question[:200]}})
         return AgentPlan(steps=steps, intent="create_task")
 
-    if "calendrier" in lower or "événement" in lower or "event" in lower:
+    if "calendrier" in lower or "événement" in lower or "event" in lower or "échéance" in lower or "deadline" in lower:
         steps.append({"action": "retrieve", "tool": "calendar_list_events", "args": {}})
 
     if "document" in lower:
@@ -178,6 +180,10 @@ async def run_agent(
             grounded=True,
         )
 
+    policy = await PolicyService(session).get_effective_policy(org_id)
+    similarity_threshold = policy.assistant_confidence_min
+    action_confidence_min = policy.auto_action_confidence_min
+
     mcp = MCPClient()
     plan = await _plan(question)
     context_parts: list[str] = []
@@ -201,7 +207,7 @@ async def run_agent(
                     items = result.content.get("items", [])
                     for item in items:
                         score = float(item.get("similarity_score", 0))
-                        if score >= SIMILARITY_THRESHOLD:
+                        if score >= similarity_threshold:
                             strong_hits += 1
                         context_parts.append(
                             f"[{item.get('source_module')}:{item.get('source_id')}] "
@@ -286,10 +292,7 @@ async def run_agent(
 
     if strong_hits == 0 and not project_rows and not has_structured_data and plan.intent == "answer":
         weak = [s for s in all_sources if s][:3]
-        prefix = (
-            "Je n'ai pas assez d'informations pour répondre avec certitude. "
-            "Voici ce que je sais :\n\n"
-        )
+        prefix = uncertainty_prefix()
         body = context or "Aucun contexte organisationnel trouvé au-dessus du seuil de similarité."
         return AgentResult(
             answer=prefix + body + _format_sources_section(weak),
@@ -301,11 +304,7 @@ async def run_agent(
             grounded=False,
         )
 
-    system = (
-        "Tu es l'assistant agentique TeamBrain. Réponds UNIQUEMENT à partir du contexte fourni. "
-        "Ne invente jamais de noms, projets ou dates. JSON: "
-        '{"answer":"...","confidence":0.0-1.0,"sources":["module:id — note"]}'
-    )
+    system = assistant_system_prompt()
     prompt = f"Contexte:\n{context}\n\nQuestion: {question}"
     if actions_taken:
         prompt += f"\n\nSuggestions créées (en attente d'approbation admin): {actions_taken}"
@@ -327,8 +326,8 @@ async def run_agent(
         except (json.JSONDecodeError, ValueError):
             pass
 
-    if actions_taken and confidence < ACTION_CONFIDENCE_MIN:
-        confidence = ACTION_CONFIDENCE_MIN
+    if actions_taken and confidence < action_confidence_min:
+        confidence = action_confidence_min
 
     answer_with_sources = answer.rstrip() + _format_sources_section(sources)
 

@@ -19,6 +19,8 @@ from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
+MANAGER_ROLES = frozenset({"owner", "admin", "manager"})
+
 
 class TaskIn(BaseModel):
     project_id: str
@@ -139,6 +141,20 @@ async def update_task_status(
     row = result.mappings().first()
     if not row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Tâche introuvable")
+
+    role = user.get("role")
+    if role not in MANAGER_ROLES:
+        assignee_id = row.get("assignee_id")
+        if not assignee_id or str(assignee_id) != str(user["id"]):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Vous ne pouvez modifier que vos tâches assignées",
+            )
+        if body.status != "done":
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Les membres peuvent uniquement marquer leurs tâches comme terminées",
+            )
 
     if body.status == "done":
         assignee = None

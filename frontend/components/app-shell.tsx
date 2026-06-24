@@ -30,6 +30,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { t } from "@/app/lib/i18n";
 import { getOrgTerm } from "@/app/lib/org-terminology";
+import { canManageOrg } from "@/app/lib/permissions";
 import { cn } from "@/app/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { PageHeader, type BreadcrumbItem } from "@/components/ui/page-header";
@@ -191,6 +192,7 @@ function SidebarNav({
   collapsedGroups,
   toggleGroup,
   settings,
+  isAdmin,
 }: {
   orgSlug: string;
   pathname: string;
@@ -198,10 +200,12 @@ function SidebarNav({
   collapsedGroups: Record<string, boolean>;
   toggleGroup: (id: string) => void;
   settings?: Record<string, unknown>;
+  isAdmin: boolean;
 }) {
   return (
     <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
       {NAV_GROUPS.map((group) => {
+        if (group.id === "admin" && !isAdmin) return null;
         const items = group.items.filter((item) => !item.module || enabledModules.includes(item.module));
         if (items.length === 0) return null;
         const collapsed = collapsedGroups[group.id];
@@ -342,6 +346,8 @@ export function AppShell({
     setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const isAdmin = canManageOrg(user);
+
   return (
     <div className="flex min-h-screen flex-col bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <TrialBanner />
@@ -358,6 +364,7 @@ export function AppShell({
             collapsedGroups={collapsedGroups}
             toggleGroup={toggleGroup}
             settings={user?.settings}
+            isAdmin={isAdmin}
           />
           <div className="border-t border-slate-800 p-3">
             <div className="flex items-center gap-2 rounded-input p-2">
@@ -388,6 +395,7 @@ export function AppShell({
                 collapsedGroups={collapsedGroups}
                 toggleGroup={toggleGroup}
                 settings={user?.settings}
+                isAdmin={isAdmin}
               />
             </aside>
           </>
@@ -477,6 +485,7 @@ export function AppShell({
                 <p className="mb-2 text-xs font-semibold uppercase text-slate-500">Navigation</p>
                 <div className="grid grid-cols-2 gap-2">
                   {NAV_GROUPS.flatMap((g) => g.items)
+                    .filter((item) => isAdmin || item.href !== "settings")
                     .filter((item) => !item.module || enabledModules.includes(item.module))
                     .filter((item) => !MOBILE_TABS.some((t) => t.href === item.href))
                     .map(({ href, label, icon: Icon }) => (

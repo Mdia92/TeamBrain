@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { FolderKanban, Plus } from "lucide-react";
 import { apiClient, ApiRequestError } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
-import { canCreateContent, canEditContent, isReadOnly, memberApprovalHint } from "@/app/lib/permissions";
+import { canCreateProject, canEditContent, isReadOnly, memberApprovalHint } from "@/app/lib/permissions";
 import { t } from "@/app/lib/i18n";
 import { useToast } from "@/components/ui/toast";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -37,7 +37,7 @@ export default function ProjectsPage() {
   const [saving, setSaving] = useState(false);
   const gridRef = useGsapStagger<HTMLDivElement>([projects.length]);
   const readOnly = isReadOnly(user);
-  const canCreate = canCreateContent(user);
+  const canCreate = canCreateProject(user);
   const canEdit = canEditContent(user);
 
   const load = () =>

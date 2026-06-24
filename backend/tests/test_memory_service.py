@@ -8,6 +8,15 @@ import pytest
 
 from app.agents.embeddings import _hash_embedding, vector_to_pg
 from app.agents.memory_service import MemoryService
+from app.policy.service import PolicyService, load_default_policy
+
+
+@pytest.fixture(autouse=True)
+def mock_org_policy(monkeypatch):
+    async def fake_policy(self, org_id: str):
+        return load_default_policy()
+
+    monkeypatch.setattr(PolicyService, "get_effective_policy", fake_policy)
 
 
 @pytest.mark.asyncio

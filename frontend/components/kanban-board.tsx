@@ -29,6 +29,7 @@ export type KanbanTask = {
   title: string;
   priority?: string;
   assignee_name?: string;
+  assignee_id?: string | null;
   due_date?: string;
   source?: string;
   source_reference?: string | null;

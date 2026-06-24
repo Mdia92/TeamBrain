@@ -30,6 +30,7 @@ dependencies = [
     "python-docx",
     "openpyxl",
     "python-pptx",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]

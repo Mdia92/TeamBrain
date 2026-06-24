@@ -13,6 +13,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import type { User } from "@/app/lib/api";
 import { gsap } from "@/lib/gsapConfig";
 import { cn } from "@/app/lib/utils";
 import { LandingNav } from "@/components/landing/landing-nav";
@@ -171,7 +172,7 @@ function FeatureVisual({ type }: { type: string }) {
   return <DocsMockup />;
 }
 
-export function LandingPage() {
+export function LandingPage({ user = null }: { user?: User | null }) {
   const root = useRef<HTMLDivElement>(null);
 
   useGSAP(
@@ -311,7 +312,7 @@ export function LandingPage() {
 
   return (
     <div ref={root} className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <LandingNav dark />
+      <LandingNav dark user={user} />
       <main>
         {/* HERO */}
         <section id="hero" className="relative flex min-h-screen flex-col justify-center overflow-hidden bg-[#0F172A] px-4 pt-20 text-center sm:px-6">

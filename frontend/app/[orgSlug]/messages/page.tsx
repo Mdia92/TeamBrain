@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Bold, Italic, List, Mail, Plus, X } from "lucide-react";
 import { apiClient } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
-import { isOrgAdmin } from "@/app/lib/permissions";
+import { isOrgAdmin, memberApprovalHint } from "@/app/lib/permissions";
 import { PageHeader } from "@/components/ui/page-header";
 import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/app/lib/utils";
@@ -227,6 +227,11 @@ export default function MessagesPage() {
                 </button>
               </div>
               <div className="space-y-3">
+                {!isAdmin && (
+                  <p className="rounded-input border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                    {memberApprovalHint()} pour envoyer un message à toute l&apos;équipe.
+                  </p>
+                )}
                 <div>
                   <label className="tb-label">À</label>
                   {canBroadcast && (

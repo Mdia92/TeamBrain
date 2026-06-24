@@ -35,6 +35,10 @@ export default function LoginPage() {
       subtitle={t("tagline")}
       footer={
         <p className="text-center text-sm text-slate-500">
+          <Link href="/" className="font-medium text-primary hover:underline">
+            ← Retour à l&apos;accueil
+          </Link>
+          <span className="mx-2">·</span>
           Pas de compte ?{" "}
           <Link href="/signup" className="font-medium text-primary hover:underline">
             Créer un compte

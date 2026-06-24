@@ -101,13 +101,23 @@ export default function DocumentsPage() {
     const fd = new FormData(e.currentTarget);
     const file = fd.get("file") as File;
     if (!file?.size) return;
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const allowed = ["pdf", "doc", "docx", "xlsx", "xls", "csv", "pptx", "txt", "md", "png", "jpg", "jpeg", "webp"];
+    if (!allowed.includes(ext)) {
+      toast("Format de fichier non supporté", "error");
+      return;
+    }
     const form = new FormData();
     form.append("file", file);
     form.append("title", String(fd.get("title") || file.name));
-    await uploadFile("/api/documents", form);
-    toast("Document téléversé", "success");
-    e.currentTarget.reset();
-    void load();
+    try {
+      await uploadFile("/api/documents", form);
+      toast("Document téléversé", "success");
+      e.currentTarget.reset();
+      void load();
+    } catch (err) {
+      toast(err instanceof ApiRequestError ? err.message : "Erreur de téléversement", "error");
+    }
   }
 
   async function handleFieldSubmit(e: FormEvent<HTMLFormElement>) {

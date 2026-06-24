@@ -32,7 +32,7 @@ export default function SignupPage() {
         full_name: String(fd.get("full_name")),
         organization_name: String(fd.get("organization_name")),
       });
-      router.push("/onboarding");
+      router.push("/create");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur d'inscription");
     } finally {

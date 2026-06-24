@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
@@ -11,11 +12,13 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TeamInvitesSection } from "@/components/team-invites";
 import { PayDunyaCheckoutButton, PayDunyaStatusBadge, TrialUpgradePanel } from "@/components/paydunya-checkout";
+import { OrgPolicySettings } from "@/components/org-policy-settings";
 
 const ALL_TABS = [
   { id: "general", label: "Général", adminOnly: false },
   { id: "team", label: "Équipe", adminOnly: true },
   { id: "modules", label: "Modules", adminOnly: true },
+  { id: "rules", label: "Règles", adminOnly: true },
   { id: "billing", label: "Facturation", adminOnly: false },
 ] as const;
 
@@ -40,6 +43,7 @@ const ROLE_OPTIONS = [
 
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
+  const router = useRouter();
   const isAdmin = canManageOrg(user);
   const tabs = useMemo(() => ALL_TABS.filter((t) => !t.adminOnly || isAdmin), [isAdmin]);
   const [tab, setTab] = useState<TabId>("general");
@@ -49,6 +53,12 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [savingModules, setSavingModules] = useState(false);
   const [paydunya, setPaydunya] = useState<{ configured: boolean; mode: string; tiers?: Record<string, { price_fcfa: number }> } | null>(null);
+
+  useEffect(() => {
+    if (user && !isAdmin) {
+      router.replace(`/${user.org_slug}/dashboard`);
+    }
+  }, [user, isAdmin, router]);
 
   useEffect(() => {
     if (!tabs.some((t) => t.id === tab)) setTab("general");
@@ -212,6 +222,15 @@ export default function SettingsPage() {
                   );
                 })}
               </ul>
+            </section>
+          )}
+
+          {tab === "rules" && isAdmin && (
+            <section className="tb-card p-6">
+              <h2 className="font-semibold">Règles organisationnelles</h2>
+              <div className="mt-4">
+                <OrgPolicySettings />
+              </div>
             </section>
           )}
 

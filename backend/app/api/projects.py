@@ -11,10 +11,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.memory_service import MemoryService
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.pagination import decode_cursor, encode_cursor
-from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -65,7 +64,7 @@ async def list_projects(
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_project(
     body: ProjectIn,
-    user: dict = Depends(require_write_access),
+    user: dict = Depends(require_role("owner", "admin", "manager")),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     pid = uuid.uuid4()
@@ -143,7 +142,7 @@ async def get_project(
 async def update_project(
     project_id: str,
     body: ProjectIn,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("owner", "admin", "manager")),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     await session.execute(

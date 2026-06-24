@@ -6,6 +6,7 @@ import { FolderKanban } from "lucide-react";
 import { apiClient, ApiRequestError } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import {
+  canCompleteTask,
   canCreateContent,
   canDragKanban,
   isReadOnly,
@@ -59,6 +60,25 @@ export default function TasksPage() {
     }
   }
 
+  async function handleCompleteTask(task: KanbanTask) {
+    if (readOnly) {
+      toast("Votre essai est terminé — mode lecture seule.", "error");
+      return;
+    }
+    if (!canCompleteTask(user, task)) {
+      toast(memberApprovalHint(), "info");
+      return;
+    }
+    try {
+      await apiClient.patch(`/api/tasks/${task.id}/status`, { status: "done" });
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: "done" } : t)));
+      setSelected((prev) => (prev?.id === task.id ? { ...prev, status: "done" } : prev));
+      toast("Tâche terminée", "success");
+    } catch (err) {
+      toast(err instanceof ApiRequestError ? err.message : "Erreur", "error");
+    }
+  }
+
   if (loading) return <CardSkeleton lines={6} />;
 
   return (
@@ -106,7 +126,16 @@ export default function TasksPage() {
             {selected.assignee_name && <p><span className="text-slate-500">Assigné à :</span> {selected.assignee_name}</p>}
             {selected.due_date && <p><span className="text-slate-500">Échéance :</span> {selected.due_date}</p>}
             {selected.source && <p><span className="text-slate-500">Source :</span> {selected.source}</p>}
-            {!canDrag && (
+            {!canDrag && canCompleteTask(user, selected) && (
+              <button
+                type="button"
+                onClick={() => void handleCompleteTask(selected)}
+                className="tb-btn-primary w-full"
+              >
+                Marquer terminé
+              </button>
+            )}
+            {!canDrag && !canCompleteTask(user, selected) && (
               <p className="text-xs text-amber-700 dark:text-amber-400">{memberApprovalHint()}</p>
             )}
           </div>

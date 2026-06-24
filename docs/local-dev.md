@@ -9,6 +9,12 @@ TeamBrain uses **non-default ports** so it can run alongside other projects on `
 | API docs (Swagger) | http://localhost:8010/docs | — |
 | Health check | http://localhost:8010/health | — |
 
+**Marketing home:** http://localhost:3010/ always shows the landing page (presentation). Login is at `/login`; signup and org wizard at `/create`. Logout returns to `/`.
+
+**Assistant:** named **Xam** (wolof: « savoir »). Tune tone via `ASSISTANT_NAME` / `ASSISTANT_PERSONALITY` in `backend/.env`.
+
+**Per-org rules:** defaults in `backend/app/policy/default_policy.yaml`; overrides in `organizations.settings.policy`. Admins edit via **Paramètres → Règles** or `GET/PATCH /api/organizations/current/policy`.
+
 ## One-time setup (you)
 
 These steps require your credentials and cannot be automated in CI:

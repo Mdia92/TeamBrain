@@ -43,6 +43,22 @@ export function canDragKanban(user: User | null | undefined): boolean {
   return canEditContent(user);
 }
 
+/** Create projects — managers and admins only. */
+export function canCreateProject(user: User | null | undefined): boolean {
+  return !isReadOnly(user) && isManagerOrAbove(user);
+}
+
+/** Members may mark their own assigned tasks done; managers can change any task. */
+export function canCompleteTask(
+  user: User | null | undefined,
+  task: { assignee_id?: string | null; status: string },
+): boolean {
+  if (isReadOnly(user) || !user) return false;
+  if (isManagerOrAbove(user)) return task.status !== "done";
+  if (!task.assignee_id) return false;
+  return task.assignee_id === user.id && task.status !== "done";
+}
+
 /** Members see this instead of destructive / admin-only controls. */
 export function memberApprovalHint(): string {
   return "Demander l'approbation à un administrateur";

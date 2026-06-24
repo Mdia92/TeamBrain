@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.embeddings import embed_text, vector_to_pg
+from app.policy import PolicyService
 
 MemoryType = str  # episodic|semantic|commitment|decision|relationship
 EntityType = str  # task|meeting|field_report|message|document|commitment
@@ -34,7 +35,13 @@ class MemoryService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def _find_similar(self, org_id: str, vector: list[float], threshold: float = 0.92) -> dict | None:
+    async def _policy(self, org_id: str):
+        return await PolicyService(self.session).get_effective_policy(org_id)
+
+    async def _find_similar(self, org_id: str, vector: list[float], threshold: float | None = None) -> dict | None:
+        if threshold is None:
+            policy = await self._policy(org_id)
+            threshold = policy.memory_dedup_similarity
         try:
             row = (
                 await self.session.execute(
@@ -130,11 +137,14 @@ class MemoryService:
         type_filter: str | None = None,
     ) -> list[MemoryHit]:
         vector, _ = await embed_text(query_text)
+        policy = await self._policy(org_id)
+        decay_months = policy.memory_decay_months
         type_clause = " AND type = :tfilter" if type_filter else ""
         params: dict[str, Any] = {
             "oid": org_id,
             "emb": vector_to_pg(vector),
             "lim": limit,
+            "decay_months": decay_months,
         }
         if type_filter:
             params["tfilter"] = type_filter
@@ -147,7 +157,7 @@ class MemoryService:
                         " source_module, source_id::text, strength,"
                         " (1 - (embedding <=> CAST(:emb AS vector)))"
                         " * CASE WHEN COALESCE(strength, 1) > 1 THEN 1.2"
-                        " WHEN created_at < now() - INTERVAL '6 months'"
+                        " WHEN created_at < now() - CAST(:decay_months AS integer) * INTERVAL '1 month'"
                         " AND COALESCE(strength, 1) = 1 THEN 0.7 ELSE 1.0 END"
                         " AS similarity"
                         " FROM memory_metadata"

@@ -1,0 +1,8 @@
+# Default organizational rules — overridden per org via organizations.settings.policy
+overdue_task_days: 2
+commitment_reminder_hours_before: 24
+field_report_gap_days: 7
+memory_dedup_similarity: 0.92
+memory_decay_months: 6
+assistant_confidence_min: 0.6
+auto_action_confidence_min: 0.6

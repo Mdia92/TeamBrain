@@ -42,8 +42,14 @@ async def test_agent_no_api_keys(monkeypatch):
 @pytest.mark.asyncio
 async def test_agent_low_context_response(monkeypatch):
     from app.config import settings
+    from app.policy.service import PolicyService, load_default_policy
 
     monkeypatch.setattr(settings, "groq_api_key", "test-key")
+
+    async def fake_policy(self, org_id: str):
+        return load_default_policy()
+
+    monkeypatch.setattr(PolicyService, "get_effective_policy", fake_policy)
 
     session = AsyncMock()
     project_result = MagicMock()
@@ -66,5 +72,5 @@ async def test_agent_low_context_response(monkeypatch):
     monkeypatch.setattr(MCPClient, "call_tool", fake_call_tool)
 
     result = await run_agent(session, "11111111-1111-1111-1111-111111111111", "Quel projet?")
-    assert "pas assez d'informations" in result.answer.lower()
+    assert "pas certain" in result.answer.lower()
     assert result.grounded is False

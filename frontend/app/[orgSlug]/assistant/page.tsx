@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ChevronDown, Mic, Send } from "lucide-react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { apiClient, ApiRequestError } from "@/app/lib/api";
@@ -8,6 +9,8 @@ import { isOrgAdmin } from "@/app/lib/permissions";
 import { t } from "@/app/lib/i18n";
 import { cn } from "@/app/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { XamAvatar, XamLabel } from "@/components/assistant/xam-avatar";
 
 type PendingSuggestion = {
   id: string;
@@ -46,6 +49,7 @@ const SUGGESTIONS = [
   "Résumé de la semaine",
   "Prochaines échéances",
   "Quelles décisions récentes?",
+  "Quels événements cette semaine?",
 ];
 
 function confidenceBadgeClass(label: string): string {
@@ -55,7 +59,16 @@ function confidenceBadgeClass(label: string): string {
 }
 
 export default function AssistantPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+      <AssistantPageContent />
+    </Suspense>
+  );
+}
+
+function AssistantPageContent() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const isAdmin = isOrgAdmin(user);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
@@ -65,6 +78,15 @@ export default function AssistantPage() {
   const [error, setError] = useState("");
   const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
   const bottomRef = useRef<HTMLDivElement>(null);
+  const prefilled = useRef(false);
+
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q && !prefilled.current) {
+      prefilled.current = true;
+      setQuestion(q);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -143,7 +165,7 @@ export default function AssistantPage() {
     <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-6rem)]">
       <PageHeader
         title={t("assistant")}
-        description="Posez des questions sur vos projets, tâches, rapports terrain et réunions."
+        description="Xam répond à partir de la mémoire de votre organisation — projets, tâches, calendrier et rapports."
       />
 
       <div className="tb-card flex flex-1 flex-col overflow-hidden">
@@ -182,7 +204,9 @@ export default function AssistantPage() {
         <div className="flex-1 space-y-4 overflow-y-auto p-4 md:p-6">
           {messages.length === 0 && !loading && (
             <div className="flex h-full flex-col items-center justify-center text-center text-slate-500">
-              <p className="text-sm">Commencez par une question ou choisissez une suggestion ci-dessous.</p>
+              <XamAvatar className="mb-3 h-12 w-12" />
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Bonjour, je suis Xam.</p>
+              <p className="mt-1 text-sm">Posez une question ou choisissez une suggestion ci-dessous.</p>
             </div>
           )}
           {messages.map((m) => (
@@ -198,17 +222,21 @@ export default function AssistantPage() {
                     : "border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800",
                 )}
               >
-                {m.role === "assistant" && m.meta && (
+                {m.role === "assistant" && (
                   <div className="mb-2 flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-xs font-medium",
-                        confidenceBadgeClass(m.meta.confidence_label ?? "Faible"),
-                      )}
-                    >
-                      {m.meta.confidence_label} ({Math.round((m.meta.confidence ?? 0) * 100)}%)
-                    </span>
-                    {m.meta.api_configured === false && (
+                    <XamAvatar />
+                    <XamLabel />
+                    {m.meta && (
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-xs font-medium",
+                          confidenceBadgeClass(m.meta.confidence_label ?? "Faible"),
+                        )}
+                      >
+                        {m.meta.confidence_label} ({Math.round((m.meta.confidence ?? 0) * 100)}%)
+                      </span>
+                    )}
+                    {m.meta?.api_configured === false && (
                       <span className="text-xs text-amber-600">Clé API requise</span>
                     )}
                   </div>
@@ -241,9 +269,10 @@ export default function AssistantPage() {
             </div>
           ))}
           {loading && (
-            <div className="flex justify-start">
+            <div className="flex justify-start gap-2">
+              <XamAvatar />
               <div className="rounded-modal border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800">
-                Réflexion en cours...
+                Xam réfléchit…
               </div>
             </div>
           )}
