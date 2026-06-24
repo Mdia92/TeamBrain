@@ -138,6 +138,82 @@ async def get_project(
     return dict(row)
 
 
+@router.get("/{project_id}/timeline")
+async def get_project_timeline(
+    project_id: str,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    org_id = str(user["organization_id"])
+    project = (
+        await session.execute(
+            text(
+                "SELECT id, name, start_date, end_date, status"
+                " FROM projects WHERE id = CAST(:pid AS uuid) AND organization_id = CAST(:oid AS uuid)"
+            ).bindparams(pid=project_id, oid=org_id),
+        )
+    ).mappings().first()
+    if not project:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Projet introuvable")
+
+    tasks = [
+        dict(r)
+        for r in (
+            await session.execute(
+                text(
+                    "SELECT t.id, t.title, t.status, t.priority,"
+                    " COALESCE(t.start_date, t.created_at::date) AS start_date,"
+                    " COALESCE(t.due_date, COALESCE(t.start_date, t.created_at::date)) AS due_date,"
+                    " t.assignee_id, u.full_name AS assignee_name, t.created_at"
+                    " FROM tasks t"
+                    " LEFT JOIN users u ON u.id = t.assignee_id"
+                    " WHERE t.project_id = CAST(:pid AS uuid)"
+                    " AND t.organization_id = CAST(:oid AS uuid)"
+                    " ORDER BY start_date, t.title"
+                ).bindparams(pid=project_id, oid=org_id),
+            )
+        ).mappings().all()
+    ]
+
+    task_ids = [str(t["id"]) for t in tasks]
+    dependencies: list[dict] = []
+    deps = (
+        await session.execute(
+            text(
+                "SELECT td.task_id::text, td.depends_on_task_id::text"
+                " FROM task_dependencies td"
+                " JOIN tasks t ON t.id = td.task_id"
+                " WHERE td.organization_id = CAST(:oid AS uuid)"
+                " AND t.project_id = CAST(:pid AS uuid)"
+            ).bindparams(oid=org_id, pid=project_id),
+        )
+    ).mappings().all()
+    dependencies = [dict(d) for d in deps]
+
+    for t in tasks:
+        t["id"] = str(t["id"])
+        if t.get("start_date"):
+            t["start_date"] = str(t["start_date"])
+        if t.get("due_date"):
+            t["due_date"] = str(t["due_date"])
+        if t.get("created_at"):
+            t["created_at"] = str(t["created_at"])
+        if t.get("assignee_id"):
+            t["assignee_id"] = str(t["assignee_id"])
+
+    return {
+        "project": {
+            "id": str(project["id"]),
+            "name": project["name"],
+            "start_date": str(project["start_date"]) if project.get("start_date") else None,
+            "end_date": str(project["end_date"]) if project.get("end_date") else None,
+            "status": project["status"],
+        },
+        "tasks": tasks,
+        "dependencies": dependencies,
+    }
+
+
 @router.patch("/{project_id}")
 async def update_project(
     project_id: str,

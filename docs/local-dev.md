@@ -15,6 +15,8 @@ TeamBrain uses **non-default ports** so it can run alongside other projects on `
 
 **Per-org rules:** defaults in `backend/app/policy/default_policy.yaml`; overrides in `organizations.settings.policy`. Admins edit via **Paramètres → Règles** or `GET/PATCH /api/organizations/current/policy`.
 
+**Task dependencies:** migration `012_task_dependencies`; timeline at `/[orgSlug]/projects/[projectId]?tab=timeline`; APIs `POST/DELETE /api/tasks/{id}/dependencies`, `GET /api/projects/{id}/timeline`, `PATCH /api/tasks/{id}/dates`.
+
 ## One-time setup (you)
 
 These steps require your credentials and cannot be automated in CI:
