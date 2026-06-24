@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.automation import run_automation_event
 from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user, require_role
 from app.db.session import get_db
@@ -133,6 +134,18 @@ async def create_task(
         source_id=str(tid),
     )
     await session.commit()
+    await run_automation_event(
+        session,
+        org_id=str(user["organization_id"]),
+        trigger_type="task_created",
+        context={
+            "task_id": str(tid),
+            "title": body.title,
+            "project_id": body.project_id,
+            "assignee_id": body.assignee_id,
+            "created_by": str(user["id"]),
+        },
+    )
     return {"id": str(tid)}
 
 

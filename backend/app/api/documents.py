@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.automation import run_automation_event
 from app.agents.llm_client import generate_text
 from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
@@ -147,6 +148,18 @@ async def _insert_field_report(session: AsyncSession, user: dict, body: FieldRep
         source_id=str(did),
     )
     await session.commit()
+    await run_automation_event(
+        session,
+        org_id=oid,
+        trigger_type="field_report_submitted",
+        context={
+            "document_id": str(did),
+            "title": title,
+            "project_id": body.project_id,
+            "submitted_by": str(user["id"]),
+            "location_name": body.location_name or "",
+        },
+    )
     return {"id": str(did), "ai_summary": summary}
 
 
@@ -227,6 +240,19 @@ async def upload_document(
         await session.commit()
     except Exception:
         pass
+
+    await run_automation_event(
+        session,
+        org_id=oid,
+        trigger_type="document_uploaded",
+        context={
+            "document_id": str(doc_id),
+            "title": title,
+            "project_id": project_id,
+            "doc_type": resolved_type,
+            "uploaded_by": str(user["id"]),
+        },
+    )
 
     return {"id": str(doc_id), "file_url": file_url, "doc_type": resolved_type, "ai_summary": summary}
 

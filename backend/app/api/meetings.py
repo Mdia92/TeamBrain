@@ -14,6 +14,7 @@ from app.agents.meeting_extractor import extract_meeting_intelligence
 from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
+from app.automation import run_automation_event
 from app.events.worker import trigger_on_meeting_processed
 from app.pagination import decode_cursor, paginate_response
 from app.storage.s3 import get_storage
@@ -235,6 +236,17 @@ async def upload_meeting(
     )
     await session.commit()
     await trigger_on_meeting_processed(session, oid)
+    await run_automation_event(
+        session,
+        org_id=oid,
+        trigger_type="meeting_processed",
+        context={
+            "meeting_id": str(mid),
+            "title": title,
+            "project_id": project_id,
+            "tasks_created": len(created_tasks),
+        },
+    )
 
     return {
         "id": str(mid),

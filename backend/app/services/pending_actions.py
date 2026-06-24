@@ -135,6 +135,19 @@ async def _execute_action(
         )
         return str(payload.get("task_id"))
 
+    if action_type == "add_memory":
+        brain = MemoryService(session)
+        memory_id = await brain.write_memory(
+            org_id=org_id,
+            type=payload.get("memory_type", "episodic"),
+            entity_type=payload.get("entity_type", "message"),
+            entity_id=payload.get("entity_id"),
+            note=payload.get("note", ""),
+            source_module=payload.get("source_module", "automation"),
+            source_id=payload.get("entity_id"),
+        )
+        return memory_id
+
     raise ValueError(f"Type d'action non supporté: {action_type}")
 
 

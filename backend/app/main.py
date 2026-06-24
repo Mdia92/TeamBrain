@@ -8,6 +8,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.api import (
     assistant,
     auth,
+    automations,
     billing,
     calendar,
     daily_status,
@@ -81,6 +82,7 @@ app.include_router(memory.router)
 app.include_router(notifications.router)
 app.include_router(pending_actions.router)
 app.include_router(organizations.router)
+app.include_router(automations.router)
 app.include_router(billing.router)
 app.include_router(webhooks.router)
 

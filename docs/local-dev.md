@@ -17,6 +17,8 @@ TeamBrain uses **non-default ports** so it can run alongside other projects on `
 
 **Task dependencies:** migration `012_task_dependencies`; timeline at `/[orgSlug]/projects/[projectId]?tab=timeline`; APIs `POST/DELETE /api/tasks/{id}/dependencies`, `GET /api/projects/{id}/timeline`, `PATCH /api/tasks/{id}/dates`.
 
+**Automations:** migration `013_automation_rules`; CRUD `/api/automations` (admin); **Paramètres → Automatisations** builder. Event worker + APIs fire rules on task/document/meeting events.
+
 ## One-time setup (you)
 
 These steps require your credentials and cannot be automated in CI:

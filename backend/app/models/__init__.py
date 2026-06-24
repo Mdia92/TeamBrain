@@ -142,6 +142,22 @@ class TaskDependency(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    trigger_config: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    action_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    action_config: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Document(Base):
     __tablename__ = "documents"
 

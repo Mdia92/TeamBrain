@@ -13,12 +13,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TeamInvitesSection } from "@/components/team-invites";
 import { PayDunyaCheckoutButton, PayDunyaStatusBadge, TrialUpgradePanel } from "@/components/paydunya-checkout";
 import { OrgPolicySettings } from "@/components/org-policy-settings";
+import { AutomationBuilder } from "@/components/automation-builder";
 
 const ALL_TABS = [
   { id: "general", label: "Général", adminOnly: false },
   { id: "team", label: "Équipe", adminOnly: true },
   { id: "modules", label: "Modules", adminOnly: true },
   { id: "rules", label: "Règles", adminOnly: true },
+  { id: "automations", label: "Automatisations", adminOnly: true },
   { id: "billing", label: "Facturation", adminOnly: false },
 ] as const;
 
@@ -230,6 +232,15 @@ export default function SettingsPage() {
               <h2 className="font-semibold">Règles organisationnelles</h2>
               <div className="mt-4">
                 <OrgPolicySettings />
+              </div>
+            </section>
+          )}
+
+          {tab === "automations" && isAdmin && (
+            <section className="tb-card p-6">
+              <h2 className="font-semibold">Automatisations</h2>
+              <div className="mt-4">
+                <AutomationBuilder />
               </div>
             </section>
           )}

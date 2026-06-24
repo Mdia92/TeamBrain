@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.memory_service import MemoryService
+from app.automation import run_automation_event
 from app.delivery.push import send_push
 from app.delivery.whatsapp import whatsapp_client
 from app.job_dedup import try_acquire_job_key
@@ -77,6 +78,17 @@ async def job_overdue_task_alerts(session: AsyncSession) -> int:
                 source_module="events",
                 source_id=str(row["id"]),
             )
+            await run_automation_event(
+                session,
+                org_id=org_id,
+                trigger_type="task_overdue",
+                context={
+                    "task_id": str(row["id"]),
+                    "title": row["title"],
+                    "assignee_id": str(row["assignee_id"]) if row.get("assignee_id") else None,
+                    "due_date": str(row["due_date"]),
+                },
+            )
             count += 1
     if count:
         await session.commit()
@@ -134,6 +146,18 @@ async def job_commitment_reminders(session: AsyncSession) -> int:
             note=f"Commitment reminder sent: {row['commitment_text']} to {row['full_name']}",
             source_module="events",
             source_id=str(row["meeting_id"]),
+        )
+        await run_automation_event(
+            session,
+            org_id=org_id,
+            trigger_type="commitment_due",
+            context={
+                "commitment_id": str(row["id"]),
+                "commitment_text": row["commitment_text"],
+                "deadline": str(row["deadline"]),
+                "meeting_id": str(row["meeting_id"]),
+                "committed_by": str(row["committed_by"]) if row.get("committed_by") else None,
+            },
         )
         count += 1
     if count:
