@@ -23,6 +23,8 @@ from app.services.document_extract import (
     extract_text_from_bytes,
     parse_tags_from_text,
 )
+from app.services.voice_notes import ingest_voice_note, read_upload_audio
+from app.workers.transcription import is_audio_filename
 from app.services.document_search import embed_document, search_documents_semantic
 from app.storage.s3 import get_storage
 from app.trial import require_write_access
@@ -176,15 +178,27 @@ async def upload_document(
     content = await file.read()
     filename = file.filename or "document"
     fmt = detect_format(filename, file.content_type)
+    oid = str(user["organization_id"])
+
+    if doc_type == "voice_note" or fmt == "audio" or is_audio_filename(filename, file.content_type):
+        return await ingest_voice_note(
+            session,
+            user,
+            content=content,
+            filename=filename,
+            content_type=file.content_type,
+            title=title,
+            project_id=project_id,
+        )
+
     if fmt == "unknown":
         raise HTTPException(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            "Format de fichier non supporté — utilisez PDF, Word, Excel, PowerPoint, texte ou image",
+            "Format non supporté — PDF, Office, texte, image ou audio (m4a, mp3, ogg, wav)",
         )
     storage = get_storage()
     key = f"{user['organization_id']}/documents/{doc_id}/{filename}"
     file_url = await storage.upload(key, content, file.content_type)
-    oid = str(user["organization_id"])
 
     extracted = await extract_text_from_bytes(content, filename, file.content_type)
     resolved_type = doc_type or classify_doc_type(filename, extracted)
@@ -265,61 +279,16 @@ async def upload_voice_note(
     user: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    from app.workers.transcription import transcribe_audio
-
-    content = await audio.read()
-    filename = audio.filename or "voice.webm"
-    doc_id = uuid.uuid4()
-    oid = str(user["organization_id"])
-    storage = get_storage()
-    key = f"{oid}/documents/{doc_id}/{filename}"
-    file_url = await storage.upload(key, content, audio.content_type or "audio/webm")
-
-    transcript = await transcribe_audio(content, filename)
-    summary = ""
-    if transcript and not transcript.startswith("["):
-        summary, _ = await generate_text(
-            f"Résume cette note vocale en 2-3 phrases:\n\n{transcript[:6000]}",
-            "Assistant TeamBrain.",
-        )
-
-    await session.execute(
-        text(
-            "INSERT INTO documents (id, organization_id, project_id, title, file_url,"
-            " content_type, file_size, ocr_text, ai_summary, uploaded_by, doc_type, submitted_by)"
-            " VALUES (CAST(:did AS uuid), CAST(:oid AS uuid), CAST(:pid AS uuid), :title, :url,"
-            " :ctype, :size, :ocr, :summary, CAST(:uid AS uuid), 'voice_note', CAST(:uid AS uuid))"
-        ).bindparams(
-            did=str(doc_id),
-            oid=oid,
-            pid=project_id,
-            title=title,
-            url=file_url,
-            ctype=audio.content_type or "audio/webm",
-            size=len(content),
-            ocr=transcript[:50000],
-            summary=summary or None,
-            uid=str(user["id"]),
-        ),
+    content, filename, content_type = await read_upload_audio(audio)
+    return await ingest_voice_note(
+        session,
+        user,
+        content=content,
+        filename=filename,
+        content_type=content_type,
+        title=title,
+        project_id=project_id,
     )
-    brain = MemoryService(session)
-    await brain.write_memory(
-        org_id=oid,
-        type="episodic",
-        entity_type="document",
-        entity_id=str(doc_id),
-        note=summary or transcript[:500] or title,
-        source_module="documents",
-        source_id=str(doc_id),
-    )
-    await session.commit()
-    return {
-        "id": str(doc_id),
-        "file_url": file_url,
-        "doc_type": "voice_note",
-        "transcript": transcript,
-        "ai_summary": summary,
-    }
 
 
 @router.post("/{doc_id}/summarize")

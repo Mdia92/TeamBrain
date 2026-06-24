@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Camera, ExternalLink, FileText, MapPin, MapPinned, Mic, Square, Wifi, WifiOff } from "lucide-react";
+import { Camera, ExternalLink, FileText, MapPin, MapPinned, Mic, Wifi, WifiOff } from "lucide-react";
 import { apiClient, ApiRequestError, OfflineQueuedError, uploadFile } from "@/app/lib/api";
 import { attachFieldReportPhoto } from "@/app/lib/camera";
 import { useAuth } from "@/app/contexts/AuthContext";
@@ -19,6 +19,7 @@ import { CardSkeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { TbCard } from "@/components/ui/tb-card";
 import { DetailDrawer } from "@/components/ui/detail-drawer";
+import { VoiceNoteCapture } from "@/components/voice-note-capture";
 import { useGsapStagger } from "@/hooks/use-gsap-stagger";
 
 type Doc = {
@@ -43,7 +44,7 @@ const TABS = [
 ] as const;
 
 const ACCEPT_FILES =
-  ".pdf,.doc,.docx,.xlsx,.xls,.csv,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp";
+  ".pdf,.doc,.docx,.xlsx,.xls,.csv,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp,.m4a,.mp3,.ogg,.wav,.webm";
 
 export default function DocumentsPage() {
   const { toast } = useToast();
@@ -62,10 +63,7 @@ export default function DocumentsPage() {
   const [pending, setPending] = useState(0);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoData, setPhotoData] = useState<string | null>(null);
-  const [recording, setRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [voiceTitle, setVoiceTitle] = useState("Note vocale");
-  const [voiceSubmitting, setVoiceSubmitting] = useState(false);
 
   const load = async () => {
     const typeParam = tab === "all" ? "" : `?type=${tab}`;
@@ -102,14 +100,16 @@ export default function DocumentsPage() {
     const file = fd.get("file") as File;
     if (!file?.size) return;
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-    const allowed = ["pdf", "doc", "docx", "xlsx", "xls", "csv", "pptx", "txt", "md", "png", "jpg", "jpeg", "webp"];
-    if (!allowed.includes(ext)) {
+    const docAllowed = ["pdf", "doc", "docx", "xlsx", "xls", "csv", "pptx", "txt", "md", "png", "jpg", "jpeg", "webp"];
+    const audioAllowed = ["m4a", "mp3", "ogg", "wav", "webm", "mpeg", "aac"];
+    if (!docAllowed.includes(ext) && !audioAllowed.includes(ext)) {
       toast("Format de fichier non supporté", "error");
       return;
     }
     const form = new FormData();
     form.append("file", file);
     form.append("title", String(fd.get("title") || file.name));
+    if (audioAllowed.includes(ext)) form.append("doc_type", "voice_note");
     try {
       await uploadFile("/api/documents", form);
       toast("Document téléversé", "success");
@@ -186,71 +186,6 @@ export default function DocumentsPage() {
     }
   }
 
-  async function startVoiceRecording() {
-    if (!canCreate) return;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
-      const chunks: BlobPart[] = [];
-      mr.ondataavailable = (e) => {
-        if (e.data.size) chunks.push(e.data);
-      };
-      mr.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        void submitVoiceNote(new Blob(chunks, { type: mr.mimeType || "audio/webm" }));
-      };
-      mr.start();
-      setMediaRecorder(mr);
-      setRecording(true);
-    } catch {
-      toast("Microphone inaccessible — vérifiez les permissions du navigateur", "error");
-    }
-  }
-
-  function stopVoiceRecording() {
-    if (mediaRecorder?.state === "recording") mediaRecorder.stop();
-    setRecording(false);
-    setMediaRecorder(null);
-  }
-
-  async function submitVoiceNote(blob: Blob) {
-    setVoiceSubmitting(true);
-    try {
-      const form = new FormData();
-      form.append("audio", blob, "voice.webm");
-      form.append("title", voiceTitle.trim() || "Note vocale");
-      const r = await uploadFile("/api/documents/voice-note", form) as { ai_summary?: string };
-      toast(r.ai_summary ? "Note vocale transcrite" : "Note vocale enregistrée", "success");
-      setVoiceTitle("Note vocale");
-      void load();
-    } catch (err) {
-      toast(err instanceof ApiRequestError ? err.message : "Erreur d'enregistrement", "error");
-    } finally {
-      setVoiceSubmitting(false);
-    }
-  }
-
-  async function handleVoiceFile(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const file = fd.get("audio") as File;
-    if (!file?.size) return;
-    const form = new FormData();
-    form.append("audio", file);
-    form.append("title", String(fd.get("title") || file.name));
-    setVoiceSubmitting(true);
-    try {
-      await uploadFile("/api/documents/voice-note", form);
-      toast("Note vocale téléversée", "success");
-      e.currentTarget.reset();
-      void load();
-    } catch (err) {
-      toast(err instanceof ApiRequestError ? err.message : "Erreur", "error");
-    } finally {
-      setVoiceSubmitting(false);
-    }
-  }
-
   const display = searchResults ?? docs;
   const listRef = useGsapStagger<HTMLDivElement>([display.length, tab]);
 
@@ -313,58 +248,17 @@ export default function DocumentsPage() {
           <p className="text-sm text-slate-500">
             La note est transcrite automatiquement et indexée dans la mémoire organisationnelle.
           </p>
-          <div>
-            <label className="tb-label" htmlFor="voice-title">
-              Titre
-            </label>
-            <input
-              id="voice-title"
-              value={voiceTitle}
-              onChange={(e) => setVoiceTitle(e.target.value)}
-              className="tb-input"
-              placeholder="Note vocale"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {!recording ? (
-              <button
-                type="button"
-                disabled={!canCreate || voiceSubmitting}
-                onClick={() => void startVoiceRecording()}
-                className="tb-btn-primary min-h-11 inline-flex gap-2"
-              >
-                <Mic className="h-4 w-4" />
-                {voiceSubmitting ? "Traitement…" : "Enregistrer"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={stopVoiceRecording}
-                className="tb-btn-secondary min-h-11 inline-flex gap-2 border-rose-300 text-rose-700"
-              >
-                <Square className="h-4 w-4 fill-current" />
-                Arrêter
-              </button>
-            )}
-            {recording && (
-              <span className="inline-flex items-center gap-2 text-sm text-rose-600">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
-                Enregistrement en cours…
-              </span>
-            )}
-          </div>
-          <form onSubmit={handleVoiceFile} className="flex flex-wrap items-end gap-4 border-t border-slate-100 pt-4 dark:border-slate-800">
-            <div className="min-w-[200px] flex-1">
-              <label className="tb-label" htmlFor="voice-file">
-                Ou téléverser un fichier audio
-              </label>
-              <input id="voice-file" name="audio" type="file" accept="audio/*,.webm,.mp3,.m4a,.wav,.ogg" className="text-sm" />
-            </div>
-            <input type="hidden" name="title" value={voiceTitle} />
-            <button type="submit" disabled={!canCreate || voiceSubmitting} className="tb-btn-secondary min-h-11">
-              Téléverser
-            </button>
-          </form>
+          <VoiceNoteCapture
+            disabled={!canCreate}
+            title={voiceTitle}
+            onTitleChange={setVoiceTitle}
+            onComplete={() => {
+              toast("Note vocale transcrite", "success");
+              setVoiceTitle("Note vocale");
+              void load();
+            }}
+            onError={(msg) => toast(msg, "error")}
+          />
         </div>
       ) : (
       <form onSubmit={handleUpload} className="tb-card flex flex-wrap items-end gap-4 p-6">

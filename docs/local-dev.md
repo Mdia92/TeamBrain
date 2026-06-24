@@ -33,7 +33,8 @@ These steps require your credentials and cannot be automated in CI:
      GEMINI_API_KEY=your_gemini_key_here
      GROQ_API_KEY=your_groq_key_here
      ```
-     Get Gemini: [Google AI Studio](https://aistudio.google.com/apikey) · Groq: [console.groq.com](https://console.groq.com)
+     Get Gemini: [Google AI Studio](https://aistudio.google.com/apikey) · Groq: [console.groq.com](https://console.groq.com)  
+     Voice transcription tries **Gemini audio** first, then Groq `whisper-large-v3`, then OpenAI/Deepgram if configured.
    - Optional: `MISTRAL_API_KEY`, Twilio, S3, Google OAuth
 3. **`frontend/.env.local`** — `NEXT_PUBLIC_API_URL=http://localhost:8010`
 4. Optional: **`PAYDUNYA_API_KEY`**, `PAYDUNYA_MASTER_KEY`, `PAYDUNYA_TOKEN` in `backend/.env` for checkout

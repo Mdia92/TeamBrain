@@ -32,6 +32,13 @@ _EXT_MAP = {
     ".jpeg": "image",
     ".webp": "image",
     ".gif": "image",
+    ".m4a": "audio",
+    ".mp3": "audio",
+    ".mpeg": "audio",
+    ".ogg": "audio",
+    ".wav": "audio",
+    ".webm": "audio",
+    ".aac": "audio",
 }
 
 
@@ -54,6 +61,8 @@ def detect_format(filename: str, content_type: str | None) -> str:
             return "txt"
         if "image" in ct:
             return "image"
+        if ct.startswith("audio/") or ct in ("application/ogg", "video/mp4"):
+            return "audio"
     return "unknown"
 
 

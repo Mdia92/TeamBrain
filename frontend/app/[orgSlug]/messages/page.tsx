@@ -8,6 +8,7 @@ import { isOrgAdmin, memberApprovalHint } from "@/app/lib/permissions";
 import { PageHeader } from "@/components/ui/page-header";
 import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/app/lib/utils";
+import { VoiceNoteCapture } from "@/components/voice-note-capture";
 
 type InboxItem = {
   id: string;
@@ -138,6 +139,9 @@ export default function MessagesPage() {
   }
 
   const isAdmin = isOrgAdmin(user);
+  const canSendVoice =
+    subject.trim() &&
+    (broadcast ? canBroadcast : composeTo.length > 0 || isAdmin);
 
   return (
     <div className="space-y-4">
@@ -296,8 +300,31 @@ export default function MessagesPage() {
                     onChange={(e) => setBody(e.target.value)}
                     rows={8}
                     className="tb-input min-h-[160px] resize-y"
-                    required
                   />
+                </div>
+                <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
+                  <p className="tb-label mb-2">Ou envoyer un message vocal</p>
+                  <VoiceNoteCapture
+                    compact
+                    disabled={!canSendVoice || sending}
+                    title={subject.trim() || "Message vocal"}
+                    uploadPath="/api/messages/voice-note"
+                    extraFormFields={{
+                      subject: subject.trim() || "Message vocal",
+                      broadcast: String(broadcast),
+                      recipient_ids: JSON.stringify(composeTo),
+                    }}
+                    onComplete={() => {
+                      setComposeOpen(false);
+                      void loadInbox();
+                    }}
+                    onError={(msg) => console.error(msg)}
+                  />
+                  {!canSendVoice && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Renseignez l&apos;objet et les destinataires avant d&apos;enregistrer.
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="mt-auto flex justify-end gap-2 pt-4">

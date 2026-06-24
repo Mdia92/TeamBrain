@@ -7,7 +7,7 @@ import json
 import uuid
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -18,6 +18,7 @@ from app.auth.dependencies import get_current_user
 from app.db.session import get_db
 from app.pagination import cursor_clause, paginate_response
 from app.trial import require_write_access
+from app.services.voice_notes import ingest_voice_note, read_upload_audio
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
 
@@ -215,6 +216,87 @@ async def send_inbox_message(
     )
     await session.commit()
     return {"id": str(mid)}
+
+
+@router.post("/voice-note", status_code=status.HTTP_201_CREATED)
+async def send_voice_note_message(
+    audio: UploadFile = File(...),
+    subject: str = Form("Message vocal"),
+    recipient_ids: str | None = Form(None),
+    broadcast: bool = Form(False),
+    user: dict = Depends(require_write_access),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    content_bytes, filename, content_type = await read_upload_audio(audio)
+    voice = await ingest_voice_note(
+        session,
+        user,
+        content=content_bytes,
+        filename=filename,
+        content_type=content_type,
+        title=subject,
+    )
+    transcript = voice.get("transcript", "")
+    summary = voice.get("ai_summary") or ""
+    body = transcript
+    if summary:
+        body = f"{transcript}\n\n---\nRésumé: {summary}"
+
+    parsed_ids: list[str] | None = None
+    if recipient_ids:
+        try:
+            parsed = json.loads(recipient_ids)
+            parsed_ids = parsed if isinstance(parsed, list) else [recipient_ids]
+        except json.JSONDecodeError:
+            parsed_ids = [x.strip() for x in recipient_ids.split(",") if x.strip()]
+
+    if broadcast:
+        if not _is_admin(user):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Seuls les administrateurs peuvent envoyer à toute l'équipe")
+        rids = None
+    elif parsed_ids is None:
+        if _is_admin(user):
+            rids = None
+        else:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Sélectionnez au moins un destinataire")
+    else:
+        rids = parsed_ids
+        if not rids:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Sélectionnez au moins un destinataire")
+
+    mid = uuid.uuid4()
+    oid = str(user["organization_id"])
+    await session.execute(
+        text(
+            "INSERT INTO messages (id, organization_id, channel_id, sender_id, subject, content,"
+            " recipient_ids) VALUES (CAST(:mid AS uuid), CAST(:oid AS uuid), NULL,"
+            " CAST(:uid AS uuid), :subject, :content, :rids)"
+        ).bindparams(
+            mid=str(mid),
+            oid=oid,
+            uid=str(user["id"]),
+            subject=subject,
+            content=body,
+            rids=rids,
+        ),
+    )
+    brain = MemoryService(session)
+    await brain.write_memory(
+        org_id=oid,
+        type="episodic",
+        entity_type="message",
+        entity_id=str(mid),
+        note=f"Message vocal « {subject} »: {(summary or transcript)[:200]}",
+        source_module="messages",
+        source_id=str(mid),
+    )
+    await session.commit()
+    return {
+        "id": str(mid),
+        "voice_document_id": voice.get("id"),
+        "transcript": transcript,
+        "ai_summary": summary,
+    }
 
 
 @router.patch("/{message_id}/read")

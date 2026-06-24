@@ -11,6 +11,7 @@ import { cn } from "@/app/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { XamAvatar, XamLabel } from "@/components/assistant/xam-avatar";
+import { VoiceNoteCapture } from "@/components/voice-note-capture";
 
 type PendingSuggestion = {
   id: string;
@@ -77,6 +78,7 @@ function AssistantPageContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
+  const [showVoice, setShowVoice] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prefilled = useRef(false);
 
@@ -294,7 +296,22 @@ function AssistantPageContent() {
               </button>
             ))}
           </div>
-          <form onSubmit={handleSubmit} className="flex gap-2">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+            {showVoice && (
+              <VoiceNoteCapture
+                compact
+                title="Question vocale"
+                uploadPath="/api/documents/voice-note"
+                onComplete={(r) => {
+                  setShowVoice(false);
+                  const q = r.transcript?.trim() || r.ai_summary?.trim();
+                  if (q) void ask(q);
+                }}
+                onError={(msg) => setError(msg)}
+                className="rounded-input border border-slate-200 p-3 dark:border-slate-700"
+              />
+            )}
+            <div className="flex gap-2">
             <input
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
@@ -304,15 +321,17 @@ function AssistantPageContent() {
             />
             <button
               type="button"
-              className="tb-btn-secondary hidden sm:inline-flex"
-              title="Microphone (bientôt)"
-              disabled
+              className={cn("tb-btn-secondary hidden sm:inline-flex", showVoice && "border-primary text-primary")}
+              title="Note vocale"
+              disabled={loading}
+              onClick={() => setShowVoice((v) => !v)}
             >
               <Mic className="h-4 w-4" />
             </button>
             <button type="submit" disabled={loading || !question.trim()} className="tb-btn-primary h-10 px-4">
               <Send className="h-4 w-4" />
             </button>
+            </div>
           </form>
         </div>
       </div>
