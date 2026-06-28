@@ -166,8 +166,12 @@ export async function uploadFile(
       body: formData,
       signal: controller.signal,
     });
-  } catch {
-    throw new ApiRequestError(0, "Connexion perdue, réessayez.");
+  } catch (err) {
+    const hint =
+      err instanceof TypeError
+        ? " — vérifiez que l'API tourne sur le port 8010 et que CORS autorise cette origine"
+        : "";
+    throw new ApiRequestError(0, `Connexion perdue, réessayez.${hint}`);
   } finally {
     clearTimeout(timer);
   }

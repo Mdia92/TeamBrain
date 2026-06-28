@@ -120,6 +120,32 @@ If `3010` or `8010` are taken, pick free ports and update:
 - `frontend/.env.local` → `NEXT_PUBLIC_API_URL`
 - Frontend dev command: `next dev -p <port>`
 
+## CORS + cache reset (upload / network errors)
+
+Document uploads call `POST /api/documents` cross-origin. The API allows **`http://localhost:3010`** and **`http://127.0.0.1:3010`** (both — mismatch causes CORS failures).
+
+**One-shot local reset:**
+
+```powershell
+# Windows (recommended)
+.\scripts\dev-clean.ps1
+```
+
+```bash
+# Git Bash / WSL / macOS
+bash scripts/dev-clean.sh
+```
+
+Then in the browser on http://localhost:3010 — DevTools → Console — paste the contents of **`scripts/dev-browser-clean.js`** (unregisters stale service workers and clears caches).
+
+Ensure `backend/.env` includes:
+
+```env
+CORS_ORIGINS=http://localhost:3010,http://127.0.0.1:3010
+```
+
+Service workers are **disabled in `npm run dev`**; they only register in production builds.
+
 ## What only you can do
 
 | Task | Why |

@@ -59,6 +59,7 @@ app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+# Last added = outermost — OPTIONS preflight must hit CORS before audit/rate-limit (/api/documents uploads).
 add_cors(app)
 
 app.include_router(health.router)

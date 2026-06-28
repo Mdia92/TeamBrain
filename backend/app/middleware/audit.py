@@ -59,6 +59,12 @@ class AuditMiddleware:
                 org_id = payload.get("org")
         client = scope.get("client")
         ip = client[0] if client else None
+        if ip:
+            try:
+                import ipaddress
+                ipaddress.ip_address(ip)
+            except ValueError:
+                ip = None
         entity = (path.strip("/").split("/")[0] or "root")[:64]
         async with SessionLocal() as session:
             await session.execute(

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     app_db_role: str = "coord_app"
 
-    cors_origins: str = "http://localhost:3010"
+    cors_origins: str = "http://localhost:3010,http://127.0.0.1:3010"
     csp_extra_connect_src: str = ""
     frontend_url: str = "http://localhost:3010"
     google_oauth_client_id: str = ""
