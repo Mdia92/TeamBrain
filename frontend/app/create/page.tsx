@@ -84,17 +84,29 @@ export default function CreateOrgPage() {
     try {
       const validInvites = invites.filter((i) => i.email.includes("@"));
       if (isLoggedIn) {
-        const result = await authApi.createOrg({
-          organization_name: orgName,
-          industry,
-          team_size: teamSize,
-          primary_language: language,
-          modules,
-          invites: validInvites,
-        });
-        applySession(result);
-        const profile = await refreshUser();
-        router.push(`/${profile?.org_slug ?? result.user.org_slug}/dashboard`);
+        if (!user?.onboarding_completed) {
+          await authApi.completeOnboarding({
+            industry,
+            team_size: teamSize,
+            primary_language: language,
+            modules,
+            invites: validInvites,
+          });
+          const profile = await refreshUser();
+          router.push(`/${profile?.org_slug ?? "app"}/dashboard`);
+        } else {
+          const result = await authApi.createOrg({
+            organization_name: orgName,
+            industry,
+            team_size: teamSize,
+            primary_language: language,
+            modules,
+            invites: validInvites,
+          });
+          applySession(result);
+          const profile = await refreshUser();
+          router.push(`/${profile?.org_slug ?? result.user.org_slug}/dashboard`);
+        }
       } else {
         await signup({
           organization_name: orgName,

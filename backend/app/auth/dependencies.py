@@ -25,6 +25,13 @@ async def _set_rls_context(session: AsyncSession, user_id: str, org_id: str) -> 
     )
 
 
+async def reset_rls_bootstrap(session: AsyncSession) -> None:
+    """Drop coord_app context so bootstrap writes (new org) bypass tenant RLS."""
+    await session.execute(text("RESET ROLE"))
+    await session.execute(text("SELECT set_config('app.current_user_id', '', true)"))
+    await session.execute(text("SELECT set_config('app.current_org_id', '', true)"))
+
+
 async def get_current_user(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
     session: AsyncSession = Depends(get_db),

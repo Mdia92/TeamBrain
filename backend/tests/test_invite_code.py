@@ -67,3 +67,32 @@ def test_signup_with_valid_code():
     )
     assert r.status_code == 200
     assert r.json()["user"]["email"] == email
+
+
+def test_create_org_after_signup():
+    email = f"multi-{secrets.token_hex(4)}@example.sn"
+    r = client.post(
+        f"/api/auth/signup?code={VALID_CODE}",
+        json={
+            "email": email,
+            "password": "TestPass123!",
+            "full_name": "Multi Org",
+            "organization_name": "First Org",
+        },
+    )
+    assert r.status_code == 200
+    token = r.json()["access_token"]
+    r2 = client.post(
+        "/api/auth/create-org",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "organization_name": "Second Org",
+            "industry": "ngo",
+            "team_size": "1-10",
+            "primary_language": "fr",
+            "modules": ["projects"],
+            "invites": [],
+        },
+    )
+    assert r2.status_code == 200
+    assert r2.json()["user"]["org_slug"]

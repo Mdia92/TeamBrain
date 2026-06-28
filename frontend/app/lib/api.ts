@@ -105,7 +105,7 @@ async function request<T>(
     });
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      throw new ApiRequestError(0, "Connexion perdue, réessayez.");
+      throw new ApiRequestError(0, "Délai dépassé — réessayez.");
     }
     throw new ApiRequestError(0, "Connexion perdue, réessayez.");
   } finally {

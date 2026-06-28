@@ -13,7 +13,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, reset_rls_bootstrap
 from app.auth.invite_code import check_invite_code
 from app.auth.jwt import (
     create_access_token,
@@ -411,6 +411,7 @@ async def create_org_for_user(
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     """Logged-in user creates an additional organization (multi-org)."""
+    await reset_rls_bootstrap(session)
     org_id = uuid.uuid4()
     slug = _slugify(body.organization_name)
     lang = body.primary_language if body.primary_language in ("fr", "en", "wo") else "fr"
