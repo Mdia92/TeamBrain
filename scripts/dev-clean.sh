@@ -9,16 +9,19 @@ cd "$ROOT"
 
 kill_port() {
   local port="$1"
-  if command -v npx >/dev/null 2>&1; then
-    npx --yes kill-port "$port" 2>/dev/null || true
-  elif command -v powershell.exe >/dev/null 2>&1; then
-    powershell.exe -NoProfile -Command "
-      Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
-        ForEach-Object { Stop-Process -Id \$_.OwningProcess -Force -ErrorAction SilentlyContinue }
-    " 2>/dev/null || true
-  elif command -v lsof >/dev/null 2>&1; then
-    lsof -ti:"$port" | xargs kill -9 2>/dev/null || true
-  fi
+  for _ in 1 2 3 4 5; do
+    if command -v npx >/dev/null 2>&1; then
+      npx --yes kill-port "$port" 2>/dev/null || true
+    elif command -v powershell.exe >/dev/null 2>&1; then
+      powershell.exe -NoProfile -Command "
+        Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
+          ForEach-Object { Stop-Process -Id \$_.OwningProcess -Force -ErrorAction SilentlyContinue }
+      " 2>/dev/null || true
+    elif command -v lsof >/dev/null 2>&1; then
+      lsof -ti:"$port" | xargs kill -9 2>/dev/null || true
+    fi
+    sleep 0.4
+  done
 }
 
 echo "==> Killing dev servers on ports 3010 and 8010..."

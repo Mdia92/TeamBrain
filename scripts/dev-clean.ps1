@@ -6,8 +6,11 @@ $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
 function Stop-Port {
     param([int]$Port)
-    Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
-        ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+    for ($i = 0; $i -lt 5; $i++) {
+        Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+            ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Milliseconds 400
+    }
 }
 
 Write-Host "==> Killing dev servers on ports 3010 and 8010..."
