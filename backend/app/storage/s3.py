@@ -1,6 +1,7 @@
 """S3-compatible storage backend."""
 
 import aioboto3
+from botocore.config import Config
 
 from app.config import settings
 from app.storage.base import StorageBackend
@@ -11,11 +12,16 @@ class S3StorageBackend(StorageBackend):
         self._session = aioboto3.Session()
 
     def _client(self):
+        boto_config = None
+        if settings.s3_use_path_style:
+            boto_config = Config(s3={"addressing_style": "path"})
         return self._session.client(
             "s3",
             endpoint_url=settings.s3_endpoint_url or None,
+            region_name=settings.s3_region or None,
             aws_access_key_id=settings.s3_access_key or None,
             aws_secret_access_key=settings.s3_secret_key or None,
+            config=boto_config,
         )
 
     def _configured(self) -> bool:

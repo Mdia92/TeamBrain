@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     s3_access_key: str = ""
     s3_secret_key: str = ""
     s3_bucket: str = ""
+    s3_region: str = "auto"
+    s3_use_path_style: bool = False
 
     firebase_service_account_json: str = ""
 
