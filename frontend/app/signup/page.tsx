@@ -5,16 +5,19 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { t } from "@/app/lib/i18n";
+import { InviteCodeForm } from "@/components/invite-code-form";
 import { AuthCard } from "@/components/marketing-shell";
 
 export default function SignupPage() {
   const { signup } = useAuth();
   const router = useRouter();
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!inviteCode) return;
     setLoading(true);
     setError("");
     const fd = new FormData(e.currentTarget);
@@ -31,6 +34,7 @@ export default function SignupPage() {
         password,
         full_name: String(fd.get("full_name")),
         organization_name: String(fd.get("organization_name")),
+        inviteCode,
       });
       router.push("/create");
     } catch (err) {
@@ -38,6 +42,25 @@ export default function SignupPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (!inviteCode) {
+    return (
+      <AuthCard
+        title="Code d'invitation"
+        subtitle="TeamBrain est en accès pilote — entrez votre code pour créer un compte"
+        footer={
+          <p className="text-center text-sm text-slate-500">
+            Déjà un compte ?{" "}
+            <Link href="/login" className="font-medium text-primary hover:underline">
+              Se connecter
+            </Link>
+          </p>
+        }
+      >
+        <InviteCodeForm onValidated={setInviteCode} />
+      </AuthCard>
+    );
   }
 
   return (

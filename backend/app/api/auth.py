@@ -8,12 +8,13 @@ import uuid
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
+from app.auth.invite_code import check_invite_code
 from app.auth.jwt import (
     create_access_token,
     create_refresh_token,
@@ -148,14 +149,25 @@ async def _load_user_session(session: AsyncSession, user_id: str, org_id: str) -
     return dict(row) if row else None
 
 
+@router.post("/validate-invite-code")
+async def validate_invite_code(code: str = Query(..., min_length=1)) -> dict:
+    valid, message = check_invite_code(code)
+    return {"valid": valid, "message": message}
+
+
 @router.post("/signup")
 @limiter.limit("5/minute")
 async def signup(
     request: Request,
     response: Response,
     body: SignupIn,
+    code: str = Query(..., min_length=1),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
+    valid, message = check_invite_code(code)
+    if not valid:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, message)
+
     existing = (
         await session.execute(text("SELECT 1 FROM users WHERE email = :e").bindparams(e=body.email))
     ).first()

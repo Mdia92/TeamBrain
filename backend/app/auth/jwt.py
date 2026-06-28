@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -21,6 +22,16 @@ def _now() -> datetime:
 
 def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _safe_inet(ip: str | None) -> str | None:
+    if not ip:
+        return None
+    try:
+        ipaddress.ip_address(ip)
+        return ip
+    except ValueError:
+        return None
 
 
 def create_access_token(user_id, organization_id, role: str) -> str:
@@ -54,7 +65,7 @@ async def create_refresh_token(session: AsyncSession, user_id, ip: str | None = 
         text(
             "INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at, last_used_ip)"
             " VALUES (CAST(:uid AS uuid), :th, :exp, now(), CAST(:ip AS inet))"
-        ).bindparams(uid=str(user_id), th=_hash(token), exp=exp, ip=ip),
+        ).bindparams(uid=str(user_id), th=_hash(token), exp=exp, ip=_safe_inet(ip)),
     )
     await session.commit()
     return token

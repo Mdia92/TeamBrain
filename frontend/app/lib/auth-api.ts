@@ -4,16 +4,23 @@ export function login(email: string, password: string): Promise<LoginResponse> {
   return apiClient.post("/api/auth/login", { email, password });
 }
 
-export function signup(data: {
-  email: string;
-  password: string;
-  full_name: string;
-  organization_name: string;
-  industry?: string;
-  team_size?: string;
-  primary_language?: string;
-}): Promise<LoginResponse> {
-  return apiClient.post("/api/auth/signup", data);
+export function validateInviteCode(code: string): Promise<{ valid: boolean; message: string }> {
+  return apiClient.post(`/api/auth/validate-invite-code?code=${encodeURIComponent(code)}`);
+}
+
+export function signup(
+  data: {
+    email: string;
+    password: string;
+    full_name: string;
+    organization_name: string;
+    industry?: string;
+    team_size?: string;
+    primary_language?: string;
+  },
+  inviteCode: string,
+): Promise<LoginResponse> {
+  return apiClient.post(`/api/auth/signup?code=${encodeURIComponent(inviteCode)}`, data);
 }
 
 export async function refresh(): Promise<{ access_token: string } | null> {

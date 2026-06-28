@@ -9,7 +9,9 @@ TeamBrain uses **non-default ports** so it can run alongside other projects on `
 | API docs (Swagger) | http://localhost:8010/docs | — |
 | Health check | http://localhost:8010/health | — |
 
-**Marketing home:** http://localhost:3010/ always shows the landing page (presentation). Login is at `/login`; signup and org wizard at `/create`. Logout returns to `/`.
+**Marketing home:** http://localhost:3010/ always shows the landing page (presentation). Login is at `/login`; signup and org wizard at `/create` (pilot invite code required). Logout returns to `/`.
+
+**Pilot signup:** code `TIMTIMOL2026` — validated via `POST /api/auth/validate-invite-code?code=...`; required on `POST /api/auth/signup?code=...`.
 
 **Assistant:** named **Xam** (wolof: « savoir »). Tune tone via `ASSISTANT_NAME` / `ASSISTANT_PERSONALITY` in `backend/.env`.
 

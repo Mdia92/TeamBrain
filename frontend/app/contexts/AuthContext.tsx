@@ -25,6 +25,7 @@ type AuthContextValue = {
     industry?: string;
     team_size?: string;
     primary_language?: string;
+    inviteCode: string;
   }) => Promise<User>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<User | null>;
@@ -81,8 +82,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       industry?: string;
       team_size?: string;
       primary_language?: string;
+      inviteCode: string;
     }) => {
-      const result = await authApi.signup(data);
+      const { inviteCode, ...payload } = data;
+      const result = await authApi.signup(payload, inviteCode);
       accessTokenRef.current = result.access_token;
       setUser(result.user);
       return result.user;

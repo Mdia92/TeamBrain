@@ -8,6 +8,7 @@ import { t } from "@/app/lib/i18n";
 import * as authApi from "@/app/lib/auth-api";
 import { MarketingFooter } from "@/components/marketing-shell";
 import { INDUSTRY_TERMINOLOGY, modulesForIndustry } from "@/app/lib/org-terminology";
+import { InviteCodeForm } from "@/components/invite-code-form";
 
 const INDUSTRIES = [
   { value: "ngo", label: "ONG" },
@@ -59,6 +60,7 @@ export default function CreateOrgPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [orgName, setOrgName] = useState("");
   const [industry, setIndustry] = useState("ngo");
   const [teamSize, setTeamSize] = useState("1-10");
@@ -102,6 +104,7 @@ export default function CreateOrgPage() {
           industry,
           team_size: teamSize,
           primary_language: language,
+          inviteCode: inviteCode!,
         });
         await authApi.completeOnboarding({
           industry,
@@ -156,6 +159,29 @@ export default function CreateOrgPage() {
   const adminStep = isLoggedIn ? -1 : 1;
   const inviteStep = isLoggedIn ? 1 : 2;
   const modulesStep = isLoggedIn ? 2 : 3;
+
+  if (!isLoggedIn && !inviteCode) {
+    return (
+      <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
+        <div className="flex flex-1 items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-modal border border-slate-200 bg-white p-8 shadow-dropdown dark:border-slate-800 dark:bg-slate-900">
+            <h1 className="mb-2 text-2xl font-bold">Code d&apos;invitation</h1>
+            <p className="mb-6 text-sm text-slate-500">
+              TeamBrain est en accès pilote — entrez votre code pour créer un espace.
+            </p>
+            <InviteCodeForm onValidated={setInviteCode} />
+            <p className="mt-6 text-center text-sm text-slate-500">
+              Déjà un compte ?{" "}
+              <Link href="/login" className="font-medium text-primary hover:underline">
+                Se connecter
+              </Link>
+            </p>
+          </div>
+        </div>
+        <MarketingFooter />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
