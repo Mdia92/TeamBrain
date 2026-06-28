@@ -1,21 +1,23 @@
-// TeamBrain — paste into DevTools Console (F12) on http://localhost:3010
-// Unregisters service workers, clears caches, reloads.
+// TeamBrain — full browser reset for local dev. Paste into DevTools Console (F12).
 
-(async () => {
-  if ("serviceWorker" in navigator) {
-    const regs = await navigator.serviceWorker.getRegistrations();
-    for (const reg of regs) {
-      await reg.unregister();
-      console.log("Unregistered SW:", reg.scope);
-    }
-  }
-  if ("caches" in window) {
-    const keys = await caches.keys();
-    for (const key of keys) {
-      await caches.delete(key);
-      console.log("Deleted cache:", key);
-    }
-  }
-  console.log("Done — reloading…");
-  location.reload();
-})();
+// Unregister all service workers
+navigator.serviceWorker.getRegistrations().then((regs) =>
+  regs.forEach((reg) => reg.unregister()),
+);
+
+// Clear all caches
+caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)));
+
+// Clear IndexedDB
+indexedDB.databases().then((dbs) =>
+  dbs.forEach((db) => {
+    if (db.name) indexedDB.deleteDatabase(db.name);
+  }),
+);
+
+// Clear local/session storage
+localStorage.clear();
+sessionStorage.clear();
+
+// Reload
+setTimeout(() => location.reload(), 500);

@@ -1,10 +1,28 @@
 """S3-compatible storage backend."""
 
+import logging
+
 import aioboto3
 from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import settings
 from app.storage.base import StorageBackend
+
+logger = logging.getLogger(__name__)
+
+
+def _s3_credentials_valid() -> bool:
+    """Reject Supabase anon/service JWT tokens mistakenly pasted as S3 keys."""
+    if not (settings.s3_bucket and settings.s3_access_key and settings.s3_secret_key):
+        return False
+    access = settings.s3_access_key.strip()
+    secret = settings.s3_secret_key.strip()
+    if access.startswith("eyJ") or secret.startswith("eyJ"):
+        return False
+    if len(access) > 128 or len(secret) > 256:
+        return False
+    return True
 
 
 class S3StorageBackend(StorageBackend):
@@ -25,39 +43,55 @@ class S3StorageBackend(StorageBackend):
         )
 
     def _configured(self) -> bool:
-        return bool(settings.s3_bucket and settings.s3_access_key)
+        return _s3_credentials_valid()
 
     async def upload(self, key: str, data: bytes, content_type: str | None = None) -> str:
         if not self._configured():
+            logger.info("S3 not configured — storing locally: %s", key)
             return f"local://{key}"
         extra = {"ContentType": content_type} if content_type else {}
-        async with self._client() as client:
-            await client.put_object(Bucket=settings.s3_bucket, Key=key, Body=data, **extra)
-        return f"s3://{settings.s3_bucket}/{key}"
+        try:
+            async with self._client() as client:
+                await client.put_object(Bucket=settings.s3_bucket, Key=key, Body=data, **extra)
+            return f"s3://{settings.s3_bucket}/{key}"
+        except (ClientError, BotoCoreError) as exc:
+            if settings.environment == "development":
+                logger.warning("S3 upload failed (%s) — local fallback for %s", exc, key)
+                return f"local://{key}"
+            raise
 
     async def download(self, key: str) -> bytes:
         if not self._configured():
             return b""
-        async with self._client() as client:
-            response = await client.get_object(Bucket=settings.s3_bucket, Key=key)
-            async with response["Body"] as stream:
-                return await stream.read()
+        try:
+            async with self._client() as client:
+                response = await client.get_object(Bucket=settings.s3_bucket, Key=key)
+                async with response["Body"] as stream:
+                    return await stream.read()
+        except (ClientError, BotoCoreError):
+            return b""
 
     async def delete(self, key: str) -> None:
         if not self._configured():
             return
-        async with self._client() as client:
-            await client.delete_object(Bucket=settings.s3_bucket, Key=key)
+        try:
+            async with self._client() as client:
+                await client.delete_object(Bucket=settings.s3_bucket, Key=key)
+        except (ClientError, BotoCoreError):
+            pass
 
     async def presigned_url(self, key: str, expires_in: int = 3600) -> str:
         if not self._configured():
             return f"/api/files/{key}"
-        async with self._client() as client:
-            return await client.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": settings.s3_bucket, "Key": key},
-                ExpiresIn=expires_in,
-            )
+        try:
+            async with self._client() as client:
+                return await client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": settings.s3_bucket, "Key": key},
+                    ExpiresIn=expires_in,
+                )
+        except (ClientError, BotoCoreError):
+            return f"/api/files/{key}"
 
 
 def get_storage() -> StorageBackend:
