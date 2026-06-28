@@ -148,10 +148,20 @@ export const apiClient = {
   delete: <T>(path: string) => request<T>("DELETE", path),
 };
 
+function cloneFormData(source: FormData): FormData {
+  const copy = new FormData();
+  for (const [key, value] of source.entries()) {
+    copy.append(key, value);
+  }
+  return copy;
+}
+
 export async function uploadFile(
   path: string,
   formData: FormData,
+  isRetry = false,
 ): Promise<unknown> {
+  const body = isRetry ? formData : cloneFormData(formData);
   const token = authConfig?.getToken();
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -163,7 +173,7 @@ export async function uploadFile(
       method: "POST",
       credentials: "include",
       headers,
-      body: formData,
+      body,
       signal: controller.signal,
     });
   } catch (err) {
@@ -175,8 +185,22 @@ export async function uploadFile(
   } finally {
     clearTimeout(timer);
   }
+
+  if (response.status === 401 && !isRetry && authConfig) {
+    const newToken = await refreshAccessToken();
+    if (newToken) return uploadFile(path, cloneFormData(formData), true);
+    authConfig.onAuthFailure();
+    throw new ApiRequestError(401, await parseError(response));
+  }
+
   if (!response.ok) throw new ApiRequestError(response.status, await parseError(response));
-  return response.json();
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return {};
+  }
 }
 
 export { BASE_URL };

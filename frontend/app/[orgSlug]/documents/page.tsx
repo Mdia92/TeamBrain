@@ -64,6 +64,7 @@ export default function DocumentsPage() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoData, setPhotoData] = useState<string | null>(null);
   const [voiceTitle, setVoiceTitle] = useState("Note vocale");
+  const [uploading, setUploading] = useState(false);
 
   const load = async () => {
     const typeParam = tab === "all" ? "" : `?type=${tab}`;
@@ -96,7 +97,9 @@ export default function DocumentsPage() {
 
   async function handleUpload(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+    if (uploading) return;
+    const form = e.currentTarget;
+    const fd = new FormData(form);
     const file = fd.get("file") as File;
     if (!file?.size) return;
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
@@ -106,17 +109,20 @@ export default function DocumentsPage() {
       toast("Format de fichier non supporté", "error");
       return;
     }
-    const form = new FormData();
-    form.append("file", file);
-    form.append("title", String(fd.get("title") || file.name));
-    if (audioAllowed.includes(ext)) form.append("doc_type", "voice_note");
+    const body = new FormData();
+    body.append("file", file);
+    body.append("title", String(fd.get("title") || file.name));
+    if (audioAllowed.includes(ext)) body.append("doc_type", "voice_note");
+    setUploading(true);
     try {
-      await uploadFile("/api/documents", form);
+      await uploadFile("/api/documents", body);
       toast("Document téléversé", "success");
-      e.currentTarget.reset();
-      void load();
+      form.reset();
+      await load();
     } catch (err) {
       toast(err instanceof ApiRequestError ? err.message : "Erreur de téléversement", "error");
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -277,8 +283,8 @@ export default function DocumentsPage() {
           </label>
           <input id="doc-file" name="file" type="file" required accept={ACCEPT_FILES} className="text-sm" />
         </div>
-        <button type="submit" disabled={!canCreate} className="tb-btn-primary min-h-11">
-          {t("upload")}
+        <button type="submit" disabled={!canCreate || uploading} className="tb-btn-primary min-h-11">
+          {uploading ? t("loading") : t("upload")}
         </button>
         <button
           type="button"
