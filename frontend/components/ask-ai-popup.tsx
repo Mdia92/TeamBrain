@@ -4,7 +4,6 @@ import { Bot, Send, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { useTranslation } from "@/app/lib/use-locale";
-import { cn } from "@/app/lib/utils";
 
 export const ASK_AI_QUEUE_KEY = "teambrain-ask-ai-queue";
 

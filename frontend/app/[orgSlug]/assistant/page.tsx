@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ChevronDown, Mic, Send } from "lucide-react";
 import { useAuth } from "@/app/contexts/AuthContext";
@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AssistantAvatar, AssistantLabel } from "@/components/assistant/assistant-avatar";
 import { drainAskAiQueue } from "@/components/ask-ai-popup";
+import { VoiceNoteCapture } from "@/components/voice-note-capture";
 
 type PendingSuggestion = {
   id: string;
@@ -117,7 +118,7 @@ function AssistantPageContent() {
     return `Suggestion: ${a.action_type}`;
   }
 
-  async function ask(q: string) {
+  const ask = useCallback(async (q: string) => {
     if (!q.trim() || loading) return;
     setError("");
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", content: q.trim() };
@@ -149,7 +150,7 @@ function AssistantPageContent() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [loading, isAdmin]);
 
   useEffect(() => {
     if (prefilled.current) return;
@@ -162,7 +163,7 @@ function AssistantPageContent() {
     for (const item of toAsk) {
       void ask(item);
     }
-  }, [searchParams]);
+  }, [searchParams, ask]);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
