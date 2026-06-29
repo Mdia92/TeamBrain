@@ -32,6 +32,18 @@ async def reset_rls_bootstrap(session: AsyncSession) -> None:
     await session.execute(text("SELECT set_config('app.current_org_id', '', true)"))
 
 
+async def bootstrap_signup_rls(session: AsyncSession, *, org_id: str, user_id: str) -> None:
+    """Prime RLS session vars so coord_app policies allow new org + owner inserts."""
+    await reset_rls_bootstrap(session)
+    await session.execute(text(f"SET LOCAL ROLE {settings.app_db_role}"))
+    await session.execute(
+        text("SELECT set_config('app.current_org_id', :oid, true)").bindparams(oid=org_id),
+    )
+    await session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)").bindparams(uid=user_id),
+    )
+
+
 async def get_current_user(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
     session: AsyncSession = Depends(get_db),

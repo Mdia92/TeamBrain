@@ -6,6 +6,9 @@
 - Start: `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 - **Requires `backend/requirements.txt`** — Railpack runs `pip install -r requirements.txt` at build time. Without it you get `uvicorn: command not found` and the container exits immediately.
 - Python **3.12** (`.python-version` in `backend/`)
+- `railway.toml` runs `alembic upgrade head` on each deploy (release phase)
+
+After deploy, check `GET /api/health` — should include `db_migration` (latest: `013_automation`) and `org_memberships_table: true`.
 
 ### Required env (Railway)
 

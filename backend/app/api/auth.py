@@ -13,7 +13,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user, reset_rls_bootstrap
+from app.auth.dependencies import bootstrap_signup_rls, get_current_user, reset_rls_bootstrap
 from app.auth.invite_code import check_invite_code, check_pilot_email, pilot_blocks_extra_orgs
 from app.auth.jwt import (
     create_access_token,
@@ -193,6 +193,8 @@ async def signup(
             "first_meeting": False,
         },
     )
+
+    await bootstrap_signup_rls(session, org_id=str(org_id), user_id=str(user_id))
 
     await session.execute(
         text(
@@ -632,6 +634,7 @@ async def accept_invite_signup(
 
     user_id = uuid.uuid4()
     org_id = str(invite["organization_id"])
+    await bootstrap_signup_rls(session, org_id=org_id, user_id=str(user_id))
     await session.execute(
         text(
             "INSERT INTO users (id, organization_id, full_name, email, role, password_hash,"
