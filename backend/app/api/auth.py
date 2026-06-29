@@ -25,8 +25,8 @@ from app.auth.jwt import (
 from app.auth.membership import create_membership, get_role_for_org, list_user_orgs
 from app.auth.passwords import hash_password, verify_password
 from app.config import settings
-from app.db.sql_compat import is_sqlite, settings_column, trial_ends_sql
 from app.db.session import get_db
+from app.db.sql_compat import is_sqlite, settings_column, trial_ends_sql
 from app.rate_limit import limiter
 from app.services.industry_presets import ALL_MODULES, build_org_settings, preset_for_industry
 from app.trial import get_org_billing

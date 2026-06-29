@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import decode_token
 from app.auth.membership import get_membership
 from app.config import settings
-from app.db.sql_compat import is_sqlite
 from app.db.session import get_db
+from app.db.sql_compat import is_sqlite
 
 _bearer = HTTPBearer(auto_error=False)
 
