@@ -2,8 +2,10 @@
 
 ## Backend (Railway)
 
-- Root: `backend/`
-- Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Root: `backend/` (must be set in Railway service settings)
+- Start: `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- **Requires `backend/requirements.txt`** — Railpack runs `pip install -r requirements.txt` at build time. Without it you get `uvicorn: command not found` and the container exits immediately.
+- Python **3.12** (`.python-version` in `backend/`)
 
 ### Required env (Railway)
 
@@ -63,7 +65,13 @@ Open in a browser tab (not DevTools):
 
 Expected: `{"status":"ok","service":"teambrain-api"}`
 
-If you see **502** or timeout → fix **Railway** first (deploy logs, `DATABASE_URL`, `PORT`). Frontend cannot validate invite codes until the API responds.
+If you see **502** or timeout → fix **Railway** first. Common deploy log error:
+
+```
+uvicorn: command not found
+```
+
+→ `backend/requirements.txt` missing or Railway root directory not set to `backend/`. Container status will show **exited**.
 
 ### 2. Frontend calling the right URL?
 
