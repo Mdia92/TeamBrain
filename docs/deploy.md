@@ -53,6 +53,37 @@ Optional: `NEXT_PUBLIC_GOOGLE_MAPS_KEY`
 
 Build uses `npm ci` with dependency overrides (`glob`, `rimraf`) to cut most deprecated-package noise in install logs. A few `eslint@8` warnings remain until a future Next.js 15 / ESLint 9 upgrade.
 
+## Production diagnostics (no guessing)
+
+### 1. API reachable?
+
+Open in a browser tab (not DevTools):
+
+`https://YOUR-RAILWAY-URL.up.railway.app/api/health`
+
+Expected: `{"status":"ok","service":"teambrain-api"}`
+
+If you see **502** or timeout → fix **Railway** first (deploy logs, `DATABASE_URL`, `PORT`). Frontend cannot validate invite codes until the API responds.
+
+### 2. Frontend calling the right URL?
+
+On https://your-app.vercel.app/create → DevTools → **Network** → submit invite code.
+
+Correct: `POST https://YOUR-RAILWAY-URL.up.railway.app/api/auth/validate-invite-code`
+
+Wrong (relative path bug or stale cache):  
+`POST https://your-app.vercel.app/YOUR-RAILWAY-URL.up.railway.app/api/...`
+
+**Stale service worker:** if the script name is an old `layout-*.js` that 404s on Vercel, unregister SW (Application → Service Workers → Unregister) and hard-refresh. Current deploys must load a live `layout-*.js` (200).
+
+### 3. Vercel env
+
+`NEXT_PUBLIC_API_URL` must be `https://your-api.up.railway.app` (with `https://`). Redeploy after changing.
+
+### 4. Railway CORS
+
+`CORS_ORIGINS` and `FRONTEND_URL` must include `https://your-app.vercel.app`.
+
 ## Database migrations
 
 ```bash
