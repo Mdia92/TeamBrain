@@ -34,6 +34,7 @@ async def health() -> dict:
                 )
             ).scalar()
             payload["org_memberships_table"] = bool(has_memberships)
-    except Exception:
+    except Exception as exc:
         payload["db_check"] = "failed"
+        payload["db_error"] = type(exc).__name__
     return payload

@@ -14,7 +14,7 @@ After deploy, check `GET /api/health` — should include `db_migration` (latest:
 
 | Variable | Example |
 |----------|---------|
-| `DATABASE_URL` | Supabase session pooler URL |
+| `DATABASE_URL` | Supabase session pooler URL — **one line, no trailing newline** |
 | `JWT_SECRET_KEY` | `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `ENVIRONMENT` | `production` |
 | `CORS_ORIGINS` | `https://your-app.vercel.app` |
@@ -68,13 +68,17 @@ Open in a browser tab (not DevTools):
 
 Expected: `{"status":"ok","service":"teambrain-api"}`
 
-If you see **502** or timeout → fix **Railway** first. Common deploy log error:
+If you see **502** or timeout → fix **Railway** first. Common deploy log errors:
 
 ```
 uvicorn: command not found
 ```
+→ missing `backend/requirements.txt` or wrong Railway root directory.
 
-→ `backend/requirements.txt` missing or Railway root directory not set to `backend/`. Container status will show **exited**.
+```
+InvalidCatalogNameError: database "postgres\n" does not exist
+```
+→ `DATABASE_URL` has a **line break** at the end. Re-paste as a single line in Railway Variables (no Enter after the URL). Invite validation still works without DB; signup/login fail until fixed.
 
 ### 2. Frontend calling the right URL?
 

@@ -3,6 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -65,6 +66,17 @@ class Settings(BaseSettings):
     # Assistant personality (display name in prompts — set Xam for FR/Wolof orgs if desired)
     assistant_name: str = "Ask AI"
     assistant_personality: str = ""
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        # Railway/Supabase paste often adds a trailing newline → database "postgres\n" does not exist
+        cleaned = value.strip().replace("\r", "").replace("\n", "")
+        if cleaned.startswith("postgresql://") and "+asyncpg" not in cleaned.split("://", 1)[0]:
+            cleaned = cleaned.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return cleaned
 
     @property
     def google_oauth_redirect(self) -> str:
