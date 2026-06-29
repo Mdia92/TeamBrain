@@ -36,6 +36,7 @@ Health: `GET /api/health` → `{"status":"ok"}`
 ## Frontend (Vercel)
 
 - Root: `frontend/`
+- Node **22.x** (from `package.json` `engines`; required by Capacitor 8 CLI)
 
 ### Required env (Vercel)
 
@@ -46,6 +47,8 @@ Health: `GET /api/health` → `{"status":"ok"}`
 **Without this, invite code validation calls `localhost:8010` and fails on the live site.**
 
 Optional: `NEXT_PUBLIC_GOOGLE_MAPS_KEY`
+
+Build uses `npm ci` with dependency overrides (`glob`, `rimraf`) to cut most deprecated-package noise in install logs. A few `eslint@8` warnings remain until a future Next.js 15 / ESLint 9 upgrade.
 
 ## Database migrations
 

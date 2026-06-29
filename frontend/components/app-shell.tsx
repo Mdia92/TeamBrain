@@ -321,10 +321,10 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
-  const { t, locale } = useTranslation();
-  const navGroups = useMemo(() => buildNavGroups(t), [locale, t]);
-  const mobileTabs = useMemo(() => buildMobileTabs(t), [locale, t]);
-  const pageTitles = useMemo(() => buildPageTitles(t), [locale, t]);
+  const { t } = useTranslation();
+  const navGroups = useMemo(() => buildNavGroups(t), [t]);
+  const mobileTabs = useMemo(() => buildMobileTabs(t), [t]);
+  const pageTitles = useMemo(() => buildPageTitles(t), [t]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
