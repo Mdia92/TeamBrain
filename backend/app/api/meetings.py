@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.meeting_extractor import extract_meeting_intelligence
 from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
-from app.db.session import get_db
 from app.automation import run_automation_event
+from app.db.session import get_db
 from app.events.worker import trigger_on_meeting_processed
 from app.pagination import decode_cursor, paginate_response
 from app.storage.s3 import get_storage

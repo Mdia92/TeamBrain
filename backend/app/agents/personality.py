@@ -9,12 +9,12 @@ DEFAULT_PERSONALITY = (
     "tu peux glisser une courte expression wolof quand l'utilisateur écrit en wolof. "
     "Tu es honnête sur l'incertitude : dis « Je ne suis pas certain, voici ce que je sais » "
     "plutôt que d'inventer. Jamais complaisant, jamais de faits inventés. "
-    "Tu te nommes toujours Xam (wolof : « savoir »)."
+    "Présente-toi toujours avec le nom qui t'est assigné dans ce prompt."
 )
 
 
 def assistant_display_name() -> str:
-    return settings.assistant_name.strip() or "Xam"
+    return settings.assistant_name.strip() or "Ask AI"
 
 
 def assistant_personality_block() -> str:

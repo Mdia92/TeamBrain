@@ -7,7 +7,7 @@ import { Brain, Sparkles } from "lucide-react";
 import { apiClient, BASE_URL } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { canCreateContent, canEditContent, memberApprovalHint } from "@/app/lib/permissions";
-import { t } from "@/app/lib/i18n";
+import { useTranslation } from "@/app/lib/use-locale";
 import {
   CalendarMonthView,
   itemsForDay,
@@ -28,6 +28,7 @@ function startOfMonth(d: Date) {
 
 export default function CalendarPage() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const params = useParams();
   const orgSlug = String(params.orgSlug ?? user?.org_slug ?? "app");
   const { toast } = useToast();
@@ -98,7 +99,7 @@ export default function CalendarPage() {
       .slice(0, 6);
   }, [events, tasks]);
 
-  const xamQuestion = selectedDay
+  const assistantQuestion = selectedDay
     ? `Quels événements et échéances ai-je le ${selectedDay.toLocaleDateString("fr", { weekday: "long", day: "numeric", month: "long" })} ?`
     : "Quelles sont mes prochaines échéances et événements cette semaine ?";
 
@@ -126,7 +127,7 @@ export default function CalendarPage() {
     <div className="space-y-6">
       <PageHeader
         title={t("calendar")}
-        description="Vue mensuelle — événements, échéances de tâches et insights Xam."
+        description={`Vue mensuelle — événements, échéances de tâches et ${t("assistantCalendarInsights")}.`}
         actions={
           <div className="flex flex-wrap gap-2">
             <a href={`${BASE_URL}/api/calendar/export.ics`} className="tb-btn-secondary" target="_blank" rel="noreferrer">
@@ -170,19 +171,19 @@ export default function CalendarPage() {
                 <Brain className="h-4 w-4" />
               </span>
               <div>
-                <p className="text-sm font-semibold">Xam</p>
-                <p className="text-xs text-slate-500">Assistant calendrier</p>
+                <p className="text-sm font-semibold">{t("assistantBrand")}</p>
+                <p className="text-xs text-slate-500">{t("assistant")}</p>
               </div>
             </div>
             <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
-              Xam lit vos événements et échéances via la mémoire organisationnelle pour répondre avec des sources.
+              {t("assistantCalendarDescription")}
             </p>
             <Link
-              href={`/${orgSlug}/assistant?q=${encodeURIComponent(xamQuestion)}`}
+              href={`/${orgSlug}/assistant?q=${encodeURIComponent(assistantQuestion)}`}
               className="tb-btn-primary mt-4 flex h-10 w-full items-center justify-center gap-2 text-sm"
             >
               <Sparkles className="h-4 w-4" />
-              Demander à Xam
+              {t("askAssistantButton")}
             </Link>
           </TbCard>
 

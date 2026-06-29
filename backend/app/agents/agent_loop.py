@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.llm_client import generate_text, llm_configured
 from app.agents.memory_service import MemoryService
 from app.agents.personality import assistant_system_prompt, uncertainty_prefix
-from app.policy import PolicyService
 from app.mcp.client import MCPClient
+from app.policy import PolicyService
 from app.services.pending_actions import create_pending_action
 
 SIMILARITY_THRESHOLD = 0.6  # fallback when policy unavailable

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.policy import PolicyService
-from app.policy.models import POLICY_KEYS, validate_policy_patch
+from app.policy.models import validate_policy_patch
 from app.trial import get_org_billing
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])

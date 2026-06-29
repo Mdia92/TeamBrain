@@ -97,7 +97,6 @@ async def job_overdue_task_alerts(session: AsyncSession) -> int:
 
 async def job_commitment_reminders(session: AsyncSession) -> int:
     brain = MemoryService(session)
-    policy_svc = PolicyService(session)
     cache: dict[str, OrgPolicy] = {}
     rows = (
         await session.execute(

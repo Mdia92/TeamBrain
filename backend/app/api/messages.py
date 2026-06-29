@@ -17,8 +17,8 @@ from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
 from app.pagination import cursor_clause, paginate_response
-from app.trial import require_write_access
 from app.services.voice_notes import ingest_voice_note, read_upload_audio
+from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
 

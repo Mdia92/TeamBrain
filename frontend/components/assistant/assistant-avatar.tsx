@@ -1,9 +1,10 @@
+"use client";
+
 import { Brain } from "lucide-react";
+import { useTranslation } from "@/app/lib/use-locale";
 import { cn } from "@/app/lib/utils";
 
-export const ASSISTANT_NAME = "Xam";
-
-export function XamAvatar({ className }: { className?: string }) {
+export function AssistantAvatar({ className }: { className?: string }) {
   return (
     <span
       className={cn(
@@ -17,10 +18,11 @@ export function XamAvatar({ className }: { className?: string }) {
   );
 }
 
-export function XamLabel({ className }: { className?: string }) {
+export function AssistantLabel({ className }: { className?: string }) {
+  const { t } = useTranslation();
   return (
     <span className={cn("text-xs font-semibold text-primary", className)}>
-      {ASSISTANT_NAME}
+      {t("assistantBrand")}
     </span>
   );
 }

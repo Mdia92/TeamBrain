@@ -27,6 +27,7 @@ from app.auth.passwords import hash_password, verify_password
 from app.config import settings
 from app.db.session import get_db
 from app.rate_limit import limiter
+from app.services.industry_presets import ALL_MODULES, build_org_settings, preset_for_industry
 from app.trial import get_org_billing
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -34,8 +35,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 REFRESH_COOKIE = "refresh_token"
 ACCESS_COOKIE = "tb_access"
 COOKIE_PATH = "/api/auth"
-
-from app.services.industry_presets import ALL_MODULES, build_org_settings, preset_for_industry
 
 
 def _set_access_cookie(response: Response, token: str) -> None:

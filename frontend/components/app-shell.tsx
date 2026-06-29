@@ -28,7 +28,7 @@ import {
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
-import { t } from "@/app/lib/i18n";
+import { useTranslation } from "@/app/lib/use-locale";
 import { getOrgTerm } from "@/app/lib/org-terminology";
 import { canManageOrg } from "@/app/lib/permissions";
 import { cn } from "@/app/lib/utils";
@@ -43,63 +43,69 @@ type NavItem = {
   module: string | null;
 };
 
-const NAV_GROUPS: { id: string; label: string; items: NavItem[] }[] = [
-  {
-    id: "work",
-    label: "Travail",
-    items: [
-      { href: "dashboard", label: t("dashboard"), icon: LayoutDashboard, module: null },
-      { href: "projects", label: t("projects"), icon: FolderKanban, module: "projects" },
-      { href: "tasks", label: t("tasks"), icon: CheckSquare, module: "projects" },
-      { href: "documents", label: t("documents"), icon: FileText, module: "documents" },
-      { href: "calendar", label: t("calendar"), icon: Calendar, module: "calendar" },
-      { href: "daily-status", label: t("dailyStatus"), icon: ClipboardList, module: null },
-    ],
-  },
-  {
-    id: "comm",
-    label: "Communication",
-    items: [
-      { href: "messages", label: t("messages"), icon: MessageSquare, module: "messages" },
-      { href: "meetings", label: t("meetings"), icon: Mic, module: "meetings" },
-    ],
-  },
-  {
-    id: "intel",
-    label: "Intelligence",
-    items: [
-      { href: "memory", label: "Mémoire", icon: Brain, module: null },
-      { href: "assistant", label: t("assistant"), icon: Bot, module: null },
-    ],
-  },
-  {
-    id: "admin",
-    label: "Admin",
-    items: [{ href: "settings", label: "Paramètres", icon: Settings, module: null }],
-  },
-];
+function buildNavGroups(t: (key: import("@/app/lib/i18n").I18nKey) => string) {
+  return [
+    {
+      id: "work",
+      label: "Travail",
+      items: [
+        { href: "dashboard", label: t("dashboard"), icon: LayoutDashboard, module: null },
+        { href: "projects", label: t("projects"), icon: FolderKanban, module: "projects" },
+        { href: "tasks", label: t("tasks"), icon: CheckSquare, module: "projects" },
+        { href: "documents", label: t("documents"), icon: FileText, module: "documents" },
+        { href: "calendar", label: t("calendar"), icon: Calendar, module: "calendar" },
+        { href: "daily-status", label: t("dailyStatus"), icon: ClipboardList, module: null },
+      ],
+    },
+    {
+      id: "comm",
+      label: "Communication",
+      items: [
+        { href: "messages", label: t("messages"), icon: MessageSquare, module: "messages" },
+        { href: "meetings", label: t("meetings"), icon: Mic, module: "meetings" },
+      ],
+    },
+    {
+      id: "intel",
+      label: "Intelligence",
+      items: [
+        { href: "memory", label: "Mémoire", icon: Brain, module: null },
+        { href: "assistant", label: t("assistant"), icon: Bot, module: null },
+      ],
+    },
+    {
+      id: "admin",
+      label: "Admin",
+      items: [{ href: "settings", label: "Paramètres", icon: Settings, module: null }],
+    },
+  ] satisfies { id: string; label: string; items: NavItem[] }[];
+}
 
-const MOBILE_TABS = [
-  { href: "dashboard", label: t("dashboard"), icon: LayoutDashboard },
-  { href: "projects", label: t("projects"), icon: FolderKanban },
-  { href: "messages", label: t("messages"), icon: MessageSquare },
-  { href: "assistant", label: t("assistant"), icon: Bot },
-];
+function buildMobileTabs(t: (key: import("@/app/lib/i18n").I18nKey) => string) {
+  return [
+    { href: "dashboard", label: t("dashboard"), icon: LayoutDashboard },
+    { href: "projects", label: t("projects"), icon: FolderKanban },
+    { href: "messages", label: t("messages"), icon: MessageSquare },
+    { href: "assistant", label: t("assistant"), icon: Bot },
+  ];
+}
 
-const PAGE_TITLES: Record<string, string> = {
-  dashboard: t("dashboard"),
-  projects: t("projects"),
-  tasks: t("tasks"),
-  documents: t("documents"),
-  messages: t("messages"),
-  calendar: t("calendar"),
-  "daily-status": t("dailyStatus"),
-  "field-reports": t("fieldReports"),
-  meetings: t("meetings"),
-  memory: "Mémoire",
-  assistant: t("assistant"),
-  settings: "Paramètres",
-};
+function buildPageTitles(t: (key: import("@/app/lib/i18n").I18nKey) => string): Record<string, string> {
+  return {
+    dashboard: t("dashboard"),
+    projects: t("projects"),
+    tasks: t("tasks"),
+    documents: t("documents"),
+    messages: t("messages"),
+    calendar: t("calendar"),
+    "daily-status": t("dailyStatus"),
+    "field-reports": t("fieldReports"),
+    meetings: t("meetings"),
+    memory: "Mémoire",
+    assistant: t("assistant"),
+    settings: "Paramètres",
+  };
+}
 
 function TrialBanner() {
   const { user } = useAuth();
@@ -128,6 +134,7 @@ function TrialBanner() {
 
 function OrgSwitcher({ orgSlug, compact }: { orgSlug: string; compact?: boolean }) {
   const { user, switchOrg } = useAuth();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const orgs = user?.organizations ?? [];
 
@@ -193,6 +200,7 @@ function SidebarNav({
   toggleGroup,
   settings,
   isAdmin,
+  navGroups,
 }: {
   orgSlug: string;
   pathname: string;
@@ -201,10 +209,11 @@ function SidebarNav({
   toggleGroup: (id: string) => void;
   settings?: Record<string, unknown>;
   isAdmin: boolean;
+  navGroups: ReturnType<typeof buildNavGroups>;
 }) {
   return (
     <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
-      {NAV_GROUPS.map((group) => {
+      {navGroups.map((group) => {
         if (group.id === "admin" && !isAdmin) return null;
         const items = group.items.filter((item) => !item.module || enabledModules.includes(item.module));
         if (items.length === 0) return null;
@@ -252,6 +261,7 @@ function SidebarNav({
 
 function UserMenu({ onLogout }: { onLogout: () => void }) {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
 
@@ -311,6 +321,10 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const { t, locale } = useTranslation();
+  const navGroups = useMemo(() => buildNavGroups(t), [locale, t]);
+  const mobileTabs = useMemo(() => buildMobileTabs(t), [locale, t]);
+  const pageTitles = useMemo(() => buildPageTitles(t), [locale, t]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -327,14 +341,14 @@ export function AppShell({
   ];
 
   const currentSegment = pathname.split("/").pop() ?? "dashboard";
-  const pageTitle = navLabelFor(currentSegment, user?.settings, PAGE_TITLES[currentSegment] ?? currentSegment);
+  const pageTitle = navLabelFor(currentSegment, user?.settings, pageTitles[currentSegment] ?? currentSegment);
 
   const breadcrumbs: BreadcrumbItem[] = useMemo(
     () => [
       { label: user?.org_name ?? orgSlug, href: `/${orgSlug}/dashboard` },
       ...(currentSegment !== "dashboard" ? [{ label: pageTitle }] : [{ label: t("dashboard") }]),
     ],
-    [user?.org_name, orgSlug, currentSegment, pageTitle],
+    [user?.org_name, orgSlug, currentSegment, pageTitle, t],
   );
 
   useEffect(() => {
@@ -365,6 +379,7 @@ export function AppShell({
             toggleGroup={toggleGroup}
             settings={user?.settings}
             isAdmin={isAdmin}
+            navGroups={navGroups}
           />
           <div className="border-t border-slate-800 p-3">
             <div className="flex items-center gap-2 rounded-input p-2">
@@ -396,6 +411,7 @@ export function AppShell({
                 toggleGroup={toggleGroup}
                 settings={user?.settings}
                 isAdmin={isAdmin}
+                navGroups={navGroups}
               />
             </aside>
           </>
@@ -448,7 +464,7 @@ export function AppShell({
 
           {/* Mobile bottom tabs */}
           <nav className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom,0px)] md:hidden dark:border-slate-800 dark:bg-slate-950">
-            {MOBILE_TABS.map(({ href, label, icon: Icon }) => {
+            {mobileTabs.map(({ href, label, icon: Icon }) => {
               const path = `/${orgSlug}/${href}`;
               const active = pathname === path || pathname.startsWith(`${path}/`);
               return (
@@ -484,10 +500,10 @@ export function AppShell({
               <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] left-0 right-0 z-50 max-h-[min(16rem,50vh)] overflow-y-auto rounded-t-modal border border-slate-200 bg-white p-4 shadow-dropdown animate-slide-up md:hidden dark:border-slate-800 dark:bg-slate-900">
                 <p className="mb-2 text-xs font-semibold uppercase text-slate-500">Navigation</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {NAV_GROUPS.flatMap((g) => g.items)
+                  {navGroups.flatMap((g) => g.items)
                     .filter((item) => isAdmin || item.href !== "settings")
                     .filter((item) => !item.module || enabledModules.includes(item.module))
-                    .filter((item) => !MOBILE_TABS.some((t) => t.href === item.href))
+                    .filter((item) => !mobileTabs.some((tab) => tab.href === item.href))
                     .map(({ href, label, icon: Icon }) => (
                       <Link
                         key={href}

@@ -6,10 +6,20 @@ $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
 function Stop-Port {
     param([int]$Port)
-    for ($i = 0; $i -lt 5; $i++) {
-        Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
-            ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
-        Start-Sleep -Milliseconds 400
+    for ($i = 0; $i -lt 12; $i++) {
+        $pids = @(
+            Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty OwningProcess -Unique
+        )
+        if (-not $pids) { break }
+        foreach ($procId in $pids) {
+            Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    $left = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+    if ($left) {
+        Write-Host "WARNING: port $Port still in use (PIDs: $(($left.OwningProcess | Sort-Object -Unique) -join ', '))"
     }
 }
 

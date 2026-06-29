@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user, require_role
+from app.auth.dependencies import require_role
 from app.automation.models import (
     ACTION_LABELS_FR,
     ACTION_TYPES,

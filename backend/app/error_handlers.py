@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.middleware.cors_helpers import apply_cors_to_response
+
 logger = logging.getLogger(__name__)
 
 _FALLBACK_FR: dict[int, str] = {
@@ -29,29 +31,41 @@ def _french_detail(exc: StarletteHTTPException) -> str:
     return _FALLBACK_FR.get(exc.status_code, "Erreur")
 
 
-async def http_exception_handler(_: object, exc: StarletteHTTPException) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"detail": _french_detail(exc)})
-
-
-async def rate_limit_handler(_: object, exc: RateLimitExceeded) -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        content={"detail": "Trop de requêtes — veuillez patienter"},
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    return apply_cors_to_response(
+        request,
+        JSONResponse(status_code=exc.status_code, content={"detail": _french_detail(exc)}),
     )
 
 
-async def validation_handler(_: object, exc: RequestValidationError) -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": "Données invalides", "errors": exc.errors()},
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    return apply_cors_to_response(
+        request,
+        JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={"detail": "Trop de requêtes — veuillez patienter"},
+        ),
     )
 
 
-async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+async def validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return apply_cors_to_response(
+        request,
+        JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"detail": "Données invalides", "errors": exc.errors()},
+        ),
+    )
+
+
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled error: %s", exc)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Erreur serveur — réessayez ou contactez le support."},
+    return apply_cors_to_response(
+        request,
+        JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "Erreur serveur — réessayez ou contactez le support."},
+        ),
     )
 
 

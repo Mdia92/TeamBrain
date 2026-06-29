@@ -60,6 +60,7 @@ class AssistantResponse:
         model: str,
         confidence_label: str = "Moyenne",
         actions_taken: list[str] | None = None,
+        pending_suggestions: list[dict[str, Any]] | None = None,
         api_configured: bool = True,
         grounded: bool = True,
     ) -> None:
@@ -69,6 +70,7 @@ class AssistantResponse:
         self.model = model
         self.confidence_label = confidence_label
         self.actions_taken = actions_taken or []
+        self.pending_suggestions = pending_suggestions or []
         self.api_configured = api_configured
         self.grounded = grounded
 
@@ -150,6 +152,7 @@ async def ask(
         model=result.model,
         confidence_label=result.confidence_label,
         actions_taken=result.actions_taken,
+        pending_suggestions=result.pending_suggestions,
         api_configured=result.api_configured,
         grounded=result.grounded,
     )

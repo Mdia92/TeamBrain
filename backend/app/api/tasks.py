@@ -10,9 +10,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.automation import run_automation_event
 from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user, require_role
+from app.automation import run_automation_event
 from app.db.session import get_db
 from app.events.worker import trigger_on_task_change
 from app.pagination import decode_cursor, encode_cursor

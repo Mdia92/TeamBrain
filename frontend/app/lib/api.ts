@@ -4,6 +4,8 @@ const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8010";
 
 const REQUEST_TIMEOUT_MS = 30_000;
+const UPLOAD_TIMEOUT_MS = 120_000;
+const ASSISTANT_TIMEOUT_MS = 120_000;
 
 export type User = {
   id: string;
@@ -86,13 +88,14 @@ async function request<T>(
   body?: unknown,
   isRetry = false,
   tokenOverride?: string | null,
+  timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   const token = tokenOverride ?? authConfig?.getToken() ?? null;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
   try {
@@ -114,7 +117,7 @@ async function request<T>(
 
   if (response.status === 401 && !isRetry && authConfig) {
     const newToken = await refreshAccessToken();
-    if (newToken) return request<T>(method, path, body, true, newToken);
+    if (newToken) return request<T>(method, path, body, true, newToken, timeoutMs);
     authConfig.onAuthFailure();
     throw new ApiRequestError(401, await parseError(response));
   }
@@ -143,6 +146,8 @@ async function writeRequest<T>(
 export const apiClient = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => writeRequest<T>("POST", path, body),
+  postLong: <T>(path: string, body?: unknown) =>
+    request<T>("POST", path, body, false, undefined, ASSISTANT_TIMEOUT_MS),
   patch: <T>(path: string, body?: unknown) => writeRequest<T>("PATCH", path, body),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
   delete: <T>(path: string) => request<T>("DELETE", path),
@@ -150,9 +155,9 @@ export const apiClient = {
 
 function cloneFormData(source: FormData): FormData {
   const copy = new FormData();
-  for (const [key, value] of source.entries()) {
+  Array.from(source.entries()).forEach(([key, value]) => {
     copy.append(key, value);
-  }
+  });
   return copy;
 }
 
@@ -166,7 +171,7 @@ export async function uploadFile(
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS * 2);
+  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
   let response: Response;
   try {
     response = await fetch(`${BASE_URL}${path}`, {

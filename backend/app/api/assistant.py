@@ -32,23 +32,23 @@ async def ask(
         result = await core.ask(
             session, str(user["organization_id"]), body.question, user_id=str(user["id"])
         )
+        payload = {
+            "answer": result.answer,
+            "confidence": result.confidence,
+            "confidence_label": result.confidence_label,
+            "sources": result.sources,
+            "model": result.model,
+            "actions_taken": result.actions_taken,
+            "pending_suggestions": result.pending_suggestions,
+            "api_configured": result.api_configured,
+            "grounded": result.grounded,
+        }
     except Exception:
         log.exception("assistant_ask_failed")
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "L'assistant est temporairement indisponible. Réessayez dans un instant.",
         ) from None
-    payload = {
-        "answer": result.answer,
-        "confidence": result.confidence,
-        "confidence_label": result.confidence_label,
-        "sources": result.sources,
-        "model": result.model,
-        "actions_taken": result.actions_taken,
-        "pending_suggestions": result.pending_suggestions,
-        "api_configured": result.api_configured,
-        "grounded": result.grounded,
-    }
     try:
         await session.execute(
             text(

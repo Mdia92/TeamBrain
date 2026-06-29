@@ -9,7 +9,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.automation.models import (
-    NOTIFY_ONLY_ACTIONS,
     matches_trigger_config,
     render_config,
 )

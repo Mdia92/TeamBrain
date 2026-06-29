@@ -55,8 +55,8 @@ class Settings(BaseSettings):
     paydunya_token: str = ""
     paydunya_mode: Literal["sandbox", "live"] = "sandbox"
 
-    # Assistant personality (Xam = « savoir » en wolof)
-    assistant_name: str = "Xam"
+    # Assistant personality (display name in prompts — set Xam for FR/Wolof orgs if desired)
+    assistant_name: str = "Ask AI"
     assistant_personality: str = ""
 
     # Local demo seed only — never commit real values (set in .env)

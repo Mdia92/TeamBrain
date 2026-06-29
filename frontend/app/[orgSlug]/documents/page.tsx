@@ -1,12 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Camera, ExternalLink, FileText, MapPin, MapPinned, Mic, Wifi, WifiOff } from "lucide-react";
 import { apiClient, ApiRequestError, OfflineQueuedError, uploadFile } from "@/app/lib/api";
 import { attachFieldReportPhoto } from "@/app/lib/camera";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { canCreateContent, canEditContent, memberApprovalHint } from "@/app/lib/permissions";
-import { t } from "@/app/lib/i18n";
+import { useTranslation } from "@/app/lib/use-locale";
 import {
   getPendingCount,
   isOnline,
@@ -46,8 +46,16 @@ const TABS = [
 const ACCEPT_FILES =
   ".pdf,.doc,.docx,.xlsx,.xls,.csv,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp,.m4a,.mp3,.ogg,.wav,.webm";
 
+type UploadResult = {
+  id: string;
+  file_url: string;
+  doc_type: string;
+  ai_summary: string | null;
+};
+
 export default function DocumentsPage() {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const canCreate = canCreateContent(user);
   const canEdit = canEditContent(user);
@@ -66,19 +74,23 @@ export default function DocumentsPage() {
   const [voiceTitle, setVoiceTitle] = useState("Note vocale");
   const [uploading, setUploading] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const typeParam = tab === "all" ? "" : `?type=${tab}`;
     const r = await apiClient.get<{ items: Doc[] }>(`/api/documents${typeParam}`);
     setDocs(r.items);
-    setPending(await getPendingCount());
+    try {
+      setPending(await getPendingCount());
+    } catch {
+      /* IndexedDB unavailable — list still refreshed */
+    }
     setLoading(false);
-  };
+  }, [tab]);
 
   useEffect(() => {
     setLoading(true);
-    void load();
+    void load().catch(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when tab changes
-  }, [tab]);
+  }, [load]);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("tab");
@@ -89,11 +101,10 @@ export default function DocumentsPage() {
     setOnline(isOnline());
     const unsub = subscribeNetworkStatus((next) => {
       setOnline(next);
-      if (next) void load();
+      if (next) void load().catch(() => {});
     });
     return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [load]);
 
   async function handleUpload(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -109,18 +120,33 @@ export default function DocumentsPage() {
       toast("Format de fichier non supporté", "error");
       return;
     }
+    const title = String(fd.get("title") || file.name);
     const body = new FormData();
     body.append("file", file);
-    body.append("title", String(fd.get("title") || file.name));
+    body.append("title", title);
     if (audioAllowed.includes(ext)) body.append("doc_type", "voice_note");
     setUploading(true);
     try {
-      await uploadFile("/api/documents", body);
-      toast("Document téléversé", "success");
+      const created = (await uploadFile("/api/documents", body)) as UploadResult;
+      const docType = created.doc_type || (audioAllowed.includes(ext) ? "voice_note" : "document");
+      const newDoc: Doc = {
+        id: created.id,
+        title,
+        file_url: created.file_url,
+        ai_summary: created.ai_summary,
+        doc_type: docType,
+      };
+      setSearchResults(null);
+      setQuery("");
+      setDocs((prev) => [newDoc, ...prev.filter((d) => d.id !== newDoc.id)]);
+      if (tab !== "all" && tab !== docType) {
+        setTab("all");
+      }
+      toast(t("documentUploaded"), "success");
       form.reset();
-      await load();
+      void load().catch(() => {});
     } catch (err) {
-      toast(err instanceof ApiRequestError ? err.message : "Erreur de téléversement", "error");
+      toast(err instanceof ApiRequestError ? err.message : t("uploadError"), "error");
     } finally {
       setUploading(false);
     }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiClient } from "@/app/lib/api";
+import { useTranslation } from "@/app/lib/use-locale";
 import { cn } from "@/app/lib/utils";
 
 type PolicyView = {
@@ -84,6 +85,7 @@ const FIELDS: PolicyField[] = [
 ];
 
 export function OrgPolicySettings() {
+  const { t } = useTranslation();
   const [policy, setPolicy] = useState<PolicyView | null>(null);
   const [draft, setDraft] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -140,8 +142,8 @@ export function OrgPolicySettings() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-slate-500">
-        Règles organisationnelles — valeurs par défaut TeamBrain, personnalisables par votre organisation.
-        Les jobs de rappel et Xam utilisent ces seuils.
+        Règles organisationnelles — valeurs par défaut TeamBrain, personnalisables par votre organisation.{" "}
+        {t("assistantPolicyJobs")}
       </p>
       {error && <p className="text-sm text-rose-600">{error}</p>}
       {saved && <p className="text-sm text-emerald-600">Règles enregistrées.</p>}
@@ -154,7 +156,9 @@ export function OrgPolicySettings() {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="font-medium">{f.label}</p>
-                  <p className="mt-1 text-xs text-slate-500">{f.help}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {f.key === "assistant_confidence_min" ? t("assistantPolicyHelp") : f.help}
+                  </p>
                 </div>
                 {isOverride && (
                   <button

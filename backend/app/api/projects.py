@@ -175,7 +175,6 @@ async def get_project_timeline(
         ).mappings().all()
     ]
 
-    task_ids = [str(t["id"]) for t in tasks]
     dependencies: list[dict] = []
     deps = (
         await session.execute(

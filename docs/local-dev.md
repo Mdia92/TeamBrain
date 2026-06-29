@@ -13,7 +13,7 @@ TeamBrain uses **non-default ports** so it can run alongside other projects on `
 
 **Pilot signup:** code `TIMTIMOL2026` — validated via `POST /api/auth/validate-invite-code?code=...`; required on `POST /api/auth/signup?code=...`.
 
-**Assistant:** named **Xam** (wolof: « savoir »). Tune tone via `ASSISTANT_NAME` / `ASSISTANT_PERSONALITY` in `backend/.env`.
+**Assistant:** UI label follows org language — **Ask AI** (English), **Xam** (French/Wolof). Tune LLM name via `ASSISTANT_NAME` / `ASSISTANT_PERSONALITY` in `backend/.env`.
 
 **Per-org rules:** defaults in `backend/app/policy/default_policy.yaml`; overrides in `organizations.settings.policy`. Admins edit via **Paramètres → Règles** or `GET/PATCH /api/organizations/current/policy`.
 

@@ -11,10 +11,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.automation import run_automation_event
 from app.agents.llm_client import generate_text
 from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user
+from app.automation import run_automation_event
 from app.db.session import get_db
 from app.pagination import cursor_clause, paginate_response
 from app.services.document_extract import (
@@ -23,11 +23,11 @@ from app.services.document_extract import (
     extract_text_from_bytes,
     parse_tags_from_text,
 )
-from app.services.voice_notes import ingest_voice_note, read_upload_audio
-from app.workers.transcription import is_audio_filename
 from app.services.document_search import embed_document, search_documents_semantic
+from app.services.voice_notes import ingest_voice_note, read_upload_audio
 from app.storage.s3 import get_storage
 from app.trial import require_write_access
+from app.workers.transcription import is_audio_filename
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
