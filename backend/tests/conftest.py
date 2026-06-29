@@ -37,7 +37,7 @@ def _reset_test_engine() -> None:
 @pytest.fixture(scope="session")
 def _init_sqlite_schema() -> None:
     _reset_test_engine()
-    from tests.sqlite_schema import bootstrap_sqlite
+    from sqlite_schema import bootstrap_sqlite
 
     asyncio.run(bootstrap_sqlite(force=True))
 
