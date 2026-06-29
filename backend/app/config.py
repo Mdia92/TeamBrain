@@ -57,6 +57,15 @@ class Settings(BaseSettings):
 
     firebase_service_account_json: str = ""
 
+    # Admin notifications (signups, invites, org activity)
+    admin_notification_email: str = "diamouhamadou644@gmail.com"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_tls: bool = True
+
     # PayDunya (Senegal / West Africa payments — leave empty until merchant account)
     paydunya_api_key: str = ""
     paydunya_master_key: str = ""

@@ -40,8 +40,12 @@ export default function LoginPage() {
           </Link>
           <span className="mx-2">·</span>
           Pas de compte ?{" "}
+          <Link href="/join" className="font-medium text-primary hover:underline">
+            Rejoindre une équipe
+          </Link>
+          {" · "}
           <Link href="/signup" className="font-medium text-primary hover:underline">
-            Créer un compte
+            Inscription
           </Link>
         </p>
       }

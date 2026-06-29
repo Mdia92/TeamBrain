@@ -46,6 +46,7 @@ def test_signup_rejects_invalid_code():
         json={
             "email": f"bad-{secrets.token_hex(4)}@example.sn",
             "password": "TestPass123!",
+            "password_confirm": "TestPass123!",
             "full_name": "Test User",
             "organization_name": "Test Org",
             "invite_code": "WRONG",
@@ -61,6 +62,7 @@ def test_signup_requires_invite_code():
         json={
             "email": f"nocode-{secrets.token_hex(4)}@example.sn",
             "password": "TestPass123!",
+            "password_confirm": "TestPass123!",
             "full_name": "Test User",
             "organization_name": "Test Org",
         },
@@ -75,6 +77,7 @@ def test_signup_with_valid_code():
         json={
             "email": email,
             "password": "TestPass123!",
+            "password_confirm": "TestPass123!",
             "full_name": "Pilot User",
             "organization_name": "Pilot Org",
             "invite_code": VALID_CODE,
@@ -93,6 +96,7 @@ def test_signup_rejects_non_pilot_email_when_domains_configured(monkeypatch):
         json={
             "email": f"blocked-{secrets.token_hex(4)}@gmail.com",
             "password": "TestPass123!",
+            "password_confirm": "TestPass123!",
             "full_name": "Outsider",
             "organization_name": "Bad Org",
             "invite_code": VALID_CODE,
@@ -112,12 +116,29 @@ def test_signup_allows_any_email_when_no_domain_gate(monkeypatch):
         json={
             "email": email,
             "password": "TestPass123!",
+            "password_confirm": "TestPass123!",
             "full_name": "Pilot User",
             "organization_name": "Pilot Org",
             "invite_code": VALID_CODE,
         },
     )
     assert r.status_code == 200
+
+
+def test_signup_rejects_password_mismatch():
+    r = client.post(
+        "/api/auth/signup",
+        json={
+            "email": f"mismatch-{secrets.token_hex(4)}@example.sn",
+            "password": "TestPass123!",
+            "password_confirm": "OtherPass456!",
+            "full_name": "Test User",
+            "organization_name": "Test Org",
+            "invite_code": VALID_CODE,
+        },
+    )
+    assert r.status_code == 400
+    assert "mots de passe" in r.json()["detail"].lower()
 
 
 def test_create_org_blocked_in_pilot_mode(monkeypatch):
@@ -129,6 +150,7 @@ def test_create_org_blocked_in_pilot_mode(monkeypatch):
         json={
             "email": email,
             "password": "TestPass123!",
+            "password_confirm": "TestPass123!",
             "full_name": "Multi Org",
             "organization_name": "First Org",
             "invite_code": VALID_CODE,

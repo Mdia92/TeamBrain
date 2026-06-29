@@ -20,6 +20,7 @@ type AuthContextValue = {
   signup: (data: {
     email: string;
     password: string;
+    password_confirm: string;
     full_name: string;
     organization_name: string;
     industry?: string;
@@ -77,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (data: {
       email: string;
       password: string;
+      password_confirm: string;
       full_name: string;
       organization_name: string;
       industry?: string;

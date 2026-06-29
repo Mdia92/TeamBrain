@@ -34,11 +34,19 @@ export default function InvitePage() {
     const fd = new FormData(e.currentTarget);
     try {
       if (mode === "signup") {
+        const password = String(fd.get("password"));
+        const passwordConfirm = String(fd.get("password_confirm"));
+        if (password !== passwordConfirm) {
+          setError("Les mots de passe ne correspondent pas");
+          setLoading(false);
+          return;
+        }
         const result = await authApi.acceptInviteSignup({
           token,
           full_name: String(fd.get("full_name")),
           email: String(fd.get("email")),
-          password: String(fd.get("password")),
+          password,
+          password_confirm: passwordConfirm,
         });
         applySession(result);
         router.push(`/${result.user.org_slug}/dashboard`);
@@ -118,6 +126,12 @@ export default function InvitePage() {
             <label className="text-sm font-medium">{t("password")}</label>
             <input name="password" type="password" required minLength={8} className="mt-1 w-full rounded-lg border px-3 py-2 dark:bg-stone-800" />
           </div>
+          {mode === "signup" && (
+            <div>
+              <label className="text-sm font-medium">Confirmer le mot de passe</label>
+              <input name="password_confirm" type="password" required minLength={8} className="mt-1 w-full rounded-lg border px-3 py-2 dark:bg-stone-800" />
+            </div>
+          )}
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button type="submit" disabled={loading} className="w-full rounded-lg bg-amber-700 py-2 text-white disabled:opacity-50">
             {loading ? t("loading") : "Rejoindre l'organisation"}

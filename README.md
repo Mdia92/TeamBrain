@@ -61,7 +61,9 @@ npm run dev   # http://localhost:3010
 ## Batch 2 (June 2026)
 
 - **Multi-org** — `org_memberships`, org switcher, JWT re-issue via `POST /api/auth/switch-org`
-- **Onboarding** — `/create` 6-step flow, `/invite/{token}` join path
+- **Onboarding** — `/create` wizard (org profile → memory), `/join` + team codes (`TB-XXXXXX`), `/invite/{token}`
+- **Invitations** — invitation-only signup; team join via unique code or link; pilot code for new orgs
+- **Admin email** — `ADMIN_NOTIFICATION_EMAIL` (+ optional SMTP) for signups and invites
 - **Memory moat** — dedup on write, decay in search, weekly pattern job, `/{orgSlug}/memory`
 - **Free trial** — 30 days, read-only after expiry, banner + `/pricing`
 - **Scalability** — HNSW index, cursor pagination, per-org rate limits, idempotent jobs

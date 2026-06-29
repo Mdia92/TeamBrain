@@ -143,6 +143,10 @@ function activityHref(orgSlug: string, item: ActivityItem) {
 
 function pendingLabel(action: PendingAction) {
   const p = action.payload;
+  if (action.action_type === "meeting_suggestion") {
+    const msg = (p.dashboard_message as string) || (p.summary as string);
+    return msg ? String(msg) : "Réunion WhatsApp — approuver les tâches suggérées";
+  }
   if (action.action_type === "create_task" || action.action_type === "task_suggestion") return `Créer la tâche « ${p.title ?? "Sans titre"} »`;
   if (action.action_type === "update_task_status") return `Mettre à jour une tâche`;
   if (action.action_type === "whatsapp_send") return `Envoyer un message WhatsApp`;

@@ -11,14 +11,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user, require_role
 from app.db.session import get_db
+from app.db.sql_compat import is_sqlite, settings_column
+from app.delivery.email import notify_admin
 from app.policy import PolicyService
 from app.policy.models import validate_policy_patch
+from app.services.org_profile import write_org_profile_memory
 from app.trial import get_org_billing
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
 
 
 class SettingsPatchIn(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    org_description: str | None = Field(default=None, max_length=2000)
+    org_goals: str | None = Field(default=None, max_length=1000)
     modules: list[str] | None = None
 
 
@@ -65,23 +71,66 @@ async def patch_settings(
 ) -> dict:
     row = (
         await session.execute(
-            text("SELECT settings FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(
+            text("SELECT name, settings FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(
                 oid=str(user["organization_id"])
             ),
         )
     ).mappings().first()
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation introuvable")
+
     settings = row["settings"] if row else {}
     if isinstance(settings, str):
         settings = json.loads(settings)
+    org_name = row["name"]
+
+    if body.name is not None:
+        org_name = body.name.strip()
+        await session.execute(
+            text("UPDATE organizations SET name = :name WHERE id = CAST(:oid AS uuid)").bindparams(
+                name=org_name, oid=str(user["organization_id"])
+            ),
+        )
+    if body.org_description is not None:
+        settings["org_description"] = body.org_description.strip()
+    if body.org_goals is not None:
+        settings["org_goals"] = body.org_goals.strip()
     if body.modules is not None:
         settings["modules"] = body.modules
-    await session.execute(
-        text("UPDATE organizations SET settings = CAST(:s AS jsonb) WHERE id = CAST(:oid AS uuid)").bindparams(
-            s=json.dumps(settings), oid=str(user["organization_id"])
-        ),
+
+    if is_sqlite():
+        await session.execute(
+            text(
+                f"UPDATE organizations SET settings = {settings_column()} WHERE id = :oid"
+            ).bindparams(settings=json.dumps(settings), oid=str(user["organization_id"])),
+        )
+    else:
+        await session.execute(
+            text("UPDATE organizations SET settings = CAST(:s AS jsonb) WHERE id = CAST(:oid AS uuid)").bindparams(
+                s=json.dumps(settings), oid=str(user["organization_id"])
+            ),
+        )
+
+    await write_org_profile_memory(
+        session,
+        org_id=str(user["organization_id"]),
+        name=org_name,
+        settings=settings,
     )
     await session.commit()
-    return {"settings": settings}
+
+    if body.name is not None or body.org_description is not None or body.org_goals is not None:
+        await notify_admin(
+            event="org_profile_update",
+            subject="Profil organisation mis à jour",
+            body=(
+                f"Organisation : {org_name}\n"
+                f"Modifié par : {user.get('full_name')} <{user.get('email')}>\n"
+                f"Description : {(settings.get('org_description') or '')[:500]}"
+            ),
+        )
+
+    return {"name": org_name, "settings": settings}
 
 
 @router.get("/current/policy")

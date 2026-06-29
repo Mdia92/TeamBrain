@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 
-from fastapi import APIRouter, Form, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import text
 from twilio.request_validator import RequestValidator
 
@@ -14,6 +14,7 @@ from app.agents.memory_service import MemoryService
 from app.config import settings
 from app.db.session import SessionLocal
 from app.delivery.whatsapp import whatsapp_client
+from app.mcp.twilio_server import process_group_audio_message
 from app.workers.whatsapp_classifier import classify_whatsapp_message, should_persist_to_memory
 
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
@@ -61,19 +62,19 @@ async def whatsapp_status() -> dict:
         "twilio_configured": bool(settings.twilio_account_sid and settings.twilio_auth_token),
         "whatsapp_number": settings.twilio_whatsapp_number or None,
         "brain_filter": True,
+        "group_meeting_capture": True,
     }
 
 
 @router.post("/webhook")
-async def twilio_webhook(
-    request: Request,
-    From: str = Form(...),
-    Body: str = Form(...),
-) -> dict:
-    params = {"From": From, "Body": Body}
+async def twilio_webhook(request: Request) -> dict:
+    form = await request.form()
+    params = {k: str(v) for k, v in form.items()}
     _validate_twilio(request, params)
 
-    phone_hash = _hash_phone(From.replace("whatsapp:", ""))
+    from_addr = params.get("From", "")
+    body = params.get("Body", "")
+    phone_hash = _hash_phone(from_addr.replace("whatsapp:", ""))
 
     async with SessionLocal() as session:
         user_row = (
@@ -90,19 +91,34 @@ async def twilio_webhook(
 
         if not user_row:
             whatsapp_client.send_message(
-                From.replace("whatsapp:", ""),
+                from_addr.replace("whatsapp:", ""),
                 "Numéro non enregistré. Contactez votre administrateur.",
             )
             return {"status": "unknown_user"}
 
-        category, confidence = await classify_whatsapp_message(Body)
         oid = str(user_row["organization_id"])
         uid = str(user_row["id"])
 
-        if category == "irrelevant":
-            reply = "👍"
+        meeting_result = await process_group_audio_message(
+            session,
+            org_id=oid,
+            params=params,
+            source_user_id=uid,
+        )
+        if meeting_result.get("status") == "processed":
             await session.commit()
-            whatsapp_client.send_message(From.replace("whatsapp:", ""), reply)
+            summary = meeting_result.get("summary") or "Réunion capturée"
+            reply = (
+                f"Réunion WhatsApp enregistrée. {summary[:120]}"
+                " — consultez le tableau de bord pour approuver les tâches."
+            )
+            whatsapp_client.send_message(from_addr.replace("whatsapp:", ""), reply)
+            return {"status": "meeting_captured", **meeting_result}
+
+        category, confidence = await classify_whatsapp_message(body)
+        if category == "irrelevant":
+            await session.commit()
+            whatsapp_client.send_message(from_addr.replace("whatsapp:", ""), "👍")
             return {"status": "ignored", "category": category}
 
         if category == "status_update":
@@ -111,26 +127,26 @@ async def twilio_webhook(
                     "INSERT INTO daily_status (id, organization_id, user_id, date, status_text, source)"
                     " VALUES (gen_random_uuid(), CAST(:oid AS uuid), CAST(:uid AS uuid),"
                     " CURRENT_DATE, :text, 'whatsapp')"
-                ).bindparams(oid=oid, uid=uid, text=Body),
+                ).bindparams(oid=oid, uid=uid, text=body),
             )
             reply = "Statut enregistré. Merci!"
 
         elif category == "field_report":
-            await _insert_field_report_document(session, oid=oid, uid=uid, body=Body)
+            await _insert_field_report_document(session, oid=oid, uid=uid, body=body)
             reply = "Rapport terrain enregistré."
 
-        elif category == "task_update" and "termin" in Body.lower():
+        elif category == "task_update" and "termin" in body.lower():
             await session.execute(
                 text(
                     "UPDATE tasks SET status = 'done' WHERE organization_id = CAST(:oid AS uuid)"
                     " AND assignee_id = CAST(:uid AS uuid) AND status != 'done'"
                     " AND title ILIKE :q"
-                ).bindparams(oid=oid, uid=uid, q=f"%{Body[:30]}%"),
+                ).bindparams(oid=oid, uid=uid, q=f"%{body[:30]}%"),
             )
             reply = "Tâche mise à jour."
 
         elif category == "question":
-            result = await core.ask(session, oid, Body, user_id=uid)
+            result = await core.ask(session, oid, body, user_id=uid)
             reply = result.answer
 
         elif category in ("meeting_note", "commitment"):
@@ -146,12 +162,12 @@ async def twilio_webhook(
                 type="commitment" if category in ("meeting_note", "commitment") else "episodic",
                 entity_type="whatsapp_message",
                 entity_id=None,
-                note=f"[WhatsApp] {Body[:500]}",
+                note=f"[WhatsApp] {body[:500]}",
                 source_module="whatsapp",
                 source_id=uid,
             )
 
         await session.commit()
 
-    whatsapp_client.send_message(From.replace("whatsapp:", ""), reply)
+    whatsapp_client.send_message(from_addr.replace("whatsapp:", ""), reply)
     return {"status": "processed", "category": category, "confidence": confidence}

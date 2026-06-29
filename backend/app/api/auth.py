@@ -26,9 +26,13 @@ from app.auth.membership import create_membership, get_role_for_org, list_user_o
 from app.auth.passwords import hash_password, verify_password
 from app.config import settings
 from app.db.session import get_db
-from app.db.sql_compat import is_sqlite, settings_column, trial_ends_sql
+from app.db.sql_compat import is_sqlite, now_sql, settings_column, trial_ends_sql
+from app.delivery.email import notify_admin
 from app.rate_limit import limiter
 from app.services.industry_presets import ALL_MODULES, build_org_settings, preset_for_industry
+from app.services.invites import insert_organization_invite
+from app.services.org_profile import write_org_profile_memory
+from app.services.slug import unique_org_slug
 from app.trial import get_org_billing
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -64,8 +68,62 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
 
 
 def _slugify(name: str) -> str:
-    base = "".join(c if c.isalnum() else "-" for c in name.lower()).strip("-")
-    return f"{base}-{secrets.token_hex(3)}"
+    """Deprecated — use unique_org_slug in async handlers."""
+    from app.services.slug import slug_base
+
+    return slug_base(name)
+
+
+async def _load_pending_invite(
+    session: AsyncSession, *, token: str | None = None, short_code: str | None = None
+) -> dict | None:
+    exp = f"expires_at > {now_sql()}"
+    if short_code:
+        code = short_code.strip().upper()
+        row = (
+            await session.execute(
+                text(
+                    "SELECT id, organization_id, email, role, token FROM organization_invites"
+                    f" WHERE short_code = :code AND accepted_at IS NULL AND {exp}"
+                ).bindparams(code=code),
+            )
+        ).mappings().first()
+        return dict(row) if row else None
+    if token:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT id, organization_id, email, role, token FROM organization_invites"
+                    f" WHERE token = :token AND accepted_at IS NULL AND {exp}"
+                ).bindparams(token=token),
+            )
+        ).mappings().first()
+        return dict(row) if row else None
+    return None
+
+
+async def _preview_invite_row(session: AsyncSession, *, token: str | None = None, short_code: str | None = None) -> dict | None:
+    lookup_token = token
+    if short_code and not token:
+        inv = await _load_pending_invite(session, short_code=short_code)
+        if not inv:
+            return None
+        lookup_token = inv["token"]
+    if not lookup_token:
+        return None
+    row = (
+        await session.execute(
+            text(
+                "SELECT i.email, i.role, i.expires_at, i.short_code, i.token, o.name AS org_name, o.slug,"
+                " u.full_name AS inviter_name"
+                " FROM organization_invites i"
+                " JOIN organizations o ON o.id = i.organization_id"
+                " LEFT JOIN users u ON u.id = i.invited_by"
+                " WHERE i.token = :token AND i.accepted_at IS NULL"
+            ).bindparams(token=lookup_token),
+        )
+    ).mappings().first()
+    return dict(row) if row else None
 
 
 def _user_payload(user_id: str, row: dict, org_slug: str) -> dict:
@@ -83,6 +141,7 @@ def _user_payload(user_id: str, row: dict, org_slug: str) -> dict:
 class SignupIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
+    password_confirm: str = Field(min_length=8)
     full_name: str = Field(min_length=2)
     organization_name: str = Field(min_length=2)
     industry: str = Field(default="other")
@@ -106,6 +165,9 @@ class InviteOnboardIn(BaseModel):
 
 
 class OnboardingIn(BaseModel):
+    organization_name: str | None = Field(default=None, min_length=2)
+    org_description: str | None = Field(default=None, max_length=2000)
+    org_goals: str | None = Field(default=None, max_length=1000)
     industry: str | None = None
     team_size: str | None = None
     primary_language: str | None = None
@@ -127,14 +189,17 @@ class CreateOrgIn(BaseModel):
 
 
 class AcceptInviteSignupIn(BaseModel):
-    token: str
+    token: str | None = None
+    short_code: str | None = None
     full_name: str = Field(min_length=2)
     email: EmailStr
     password: str = Field(min_length=8)
+    password_confirm: str = Field(min_length=8)
 
 
 class AcceptInviteLoginIn(BaseModel):
-    token: str
+    token: str | None = None
+    short_code: str | None = None
     email: EmailStr
     password: str
 
@@ -170,6 +235,8 @@ async def signup(
     body: SignupIn,
     session: AsyncSession = Depends(get_db),
 ) -> dict:
+    if body.password != body.password_confirm:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Les mots de passe ne correspondent pas")
     valid, message = check_invite_code(body.invite_code)
     if not valid:
         raise HTTPException(status.HTTP_403_FORBIDDEN, message)
@@ -186,7 +253,7 @@ async def signup(
 
     org_id = uuid.uuid4()
     user_id = uuid.uuid4()
-    slug = _slugify(body.organization_name)
+    slug = await unique_org_slug(session, body.organization_name)
     lang = body.primary_language if body.primary_language in ("fr", "en", "wo") else "fr"
     settings_json = build_org_settings(
         industry=body.industry,
@@ -277,6 +344,17 @@ async def signup(
             ).bindparams(oid=str(org_id), uid=str(user_id)),
         )
     await session.commit()
+
+    await notify_admin(
+        event="signup",
+        subject="Nouvelle inscription (propriétaire)",
+        body=(
+            f"Organisation : {body.organization_name}\n"
+            f"Propriétaire : {body.full_name} <{body.email}>\n"
+            f"Slug : {slug}\n"
+            f"Secteur : {body.industry}"
+        ),
+    )
 
     access = create_access_token(user_id, org_id, "owner")
     refresh = await create_refresh_token(session, user_id, ip=request.client.host if request.client else None)
@@ -469,7 +547,7 @@ async def create_org_for_user(
         )
     await reset_rls_bootstrap(session)
     org_id = uuid.uuid4()
-    slug = _slugify(body.organization_name)
+    slug = await unique_org_slug(session, body.organization_name)
     lang = body.primary_language if body.primary_language in ("fr", "en", "wo") else "fr"
     preset = preset_for_industry(body.industry)
     modules = [m for m in body.modules if m in ALL_MODULES] or preset["modules"]
@@ -516,21 +594,38 @@ async def create_org_for_user(
     for inv in body.invites:
         if inv.role not in ("admin", "manager", "member", "field_agent"):
             continue
-        token = secrets.token_urlsafe(32)
-        await session.execute(
-            text(
-                "INSERT INTO organization_invites (id, organization_id, email, role, token, expires_at, invited_by)"
-                " VALUES (gen_random_uuid(), CAST(:oid AS uuid), :email, :role, :token,"
-                " now() + INTERVAL '7 days', CAST(:uid AS uuid))"
-            ).bindparams(
-                oid=str(org_id),
-                email=inv.email,
-                role=inv.role,
-                token=token,
-                uid=str(user["id"]),
-            ),
+        await insert_organization_invite(
+            session,
+            org_id=str(org_id),
+            email=inv.email,
+            role=inv.role,
+            invited_by=str(user["id"]),
         )
     await session.commit()
+
+    org_name_row = (
+        await session.execute(
+            text("SELECT name FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(oid=str(org_id)),
+        )
+    ).scalar()
+    await write_org_profile_memory(
+        session,
+        org_id=str(org_id),
+        name=str(org_name_row or body.organization_name),
+        settings=settings_json,
+    )
+    await session.commit()
+
+    await notify_admin(
+        event="create_org",
+        subject="Nouvelle organisation créée",
+        body=(
+            f"Organisation : {body.organization_name}\n"
+            f"Créée par : {user.get('full_name')} <{user.get('email')}>\n"
+            f"Slug : {slug}"
+        ),
+    )
+
     access = create_access_token(user["id"], org_id, "owner")
     return {
         "access_token": access,
@@ -556,7 +651,7 @@ async def complete_onboarding(
 ) -> dict:
     org_row = (
         await session.execute(
-            text("SELECT settings FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(
+            text("SELECT name, settings FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(
                 oid=str(user["organization_id"])
             ),
         )
@@ -564,10 +659,15 @@ async def complete_onboarding(
     existing = org_row["settings"] if org_row and org_row["settings"] else {}
     if isinstance(existing, str):
         existing = json.loads(existing)
+    org_name = org_row["name"] if org_row else "Organisation"
 
     industry = body.industry or existing.get("industry", "other")
     preset = preset_for_industry(industry)
     modules = [m for m in body.modules if m in ALL_MODULES] or preset["modules"]
+    if body.org_description is not None:
+        existing["org_description"] = body.org_description.strip()
+    if body.org_goals is not None:
+        existing["org_goals"] = body.org_goals.strip()
     settings_json = {
         **existing,
         "industry": industry,
@@ -591,6 +691,14 @@ async def complete_onboarding(
     if lang == "wo":
         lang = "fr"
 
+    if body.organization_name and body.organization_name.strip():
+        org_name = body.organization_name.strip()
+        await session.execute(
+            text("UPDATE organizations SET name = :name WHERE id = CAST(:oid AS uuid)").bindparams(
+                name=org_name, oid=str(user["organization_id"])
+            ),
+        )
+
     await session.execute(
         text(
             "UPDATE organizations SET settings = CAST(:s AS jsonb), language = :lang"
@@ -598,23 +706,18 @@ async def complete_onboarding(
         ).bindparams(s=json.dumps(settings_json), lang=lang if lang in ("fr", "en") else "fr", oid=str(user["organization_id"])),
     )
 
+    created_invites: list[dict[str, str]] = []
     for inv in body.invites:
         if inv.role not in ("admin", "manager", "member", "field_agent"):
             continue
-        token = secrets.token_urlsafe(32)
-        await session.execute(
-            text(
-                "INSERT INTO organization_invites (id, organization_id, email, role, token, expires_at, invited_by)"
-                " VALUES (gen_random_uuid(), CAST(:oid AS uuid), :email, :role, :token,"
-                " now() + INTERVAL '7 days', CAST(:uid AS uuid))"
-            ).bindparams(
-                oid=str(user["organization_id"]),
-                email=inv.email,
-                role=inv.role,
-                token=token,
-                uid=str(user["id"]),
-            ),
+        created = await insert_organization_invite(
+            session,
+            org_id=str(user["organization_id"]),
+            email=inv.email,
+            role=inv.role,
+            invited_by=str(user["id"]),
         )
+        created_invites.append({**created, "email": inv.email})
     if body.invites:
         settings_json["setup_checklist"]["team_invited"] = True
 
@@ -628,26 +731,54 @@ async def complete_onboarding(
             uid=str(user["id"])
         ),
     )
+
+    await write_org_profile_memory(
+        session,
+        org_id=str(user["organization_id"]),
+        name=org_name,
+        settings=settings_json,
+    )
     await session.commit()
+
+    for inv in created_invites:
+        await notify_admin(
+            event="team_invite",
+            subject="Invitation équipe créée",
+            body=(
+                f"Organisation : {org_name}\n"
+                f"Email invité : {inv.get('email', '')}\n"
+                f"Code : {inv.get('short_code', '')}\n"
+                f"Lien : {settings.frontend_url.rstrip('/')}{inv.get('invite_url', '')}"
+            ),
+        )
+
+    await notify_admin(
+        event="onboarding_complete",
+        subject="Onboarding organisation terminé",
+        body=(
+            f"Organisation : {org_name}\n"
+            f"Utilisateur : {user.get('full_name')} <{user.get('email')}>\n"
+            f"Secteur : {industry}\n"
+            f"Description : {(settings_json.get('org_description') or '')[:500]}"
+        ),
+    )
+
     return {"status": "completed", "settings": settings_json}
 
 
 @router.get("/invite/{token}")
 async def preview_invite(token: str, session: AsyncSession = Depends(get_db)) -> dict:
-    row = (
-        await session.execute(
-            text(
-                "SELECT i.email, i.role, i.expires_at, o.name AS org_name, o.slug,"
-                " u.full_name AS inviter_name"
-                " FROM organization_invites i"
-                " JOIN organizations o ON o.id = i.organization_id"
-                " LEFT JOIN users u ON u.id = i.invited_by"
-                " WHERE i.token = :token AND i.accepted_at IS NULL"
-            ).bindparams(token=token),
-        )
-    ).mappings().first()
+    row = await _preview_invite_row(session, token=token)
     if not row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation invalide ou expirée")
+    return dict(row)
+
+
+@router.get("/invite/code/{code}")
+async def preview_invite_by_code(code: str, session: AsyncSession = Depends(get_db)) -> dict:
+    row = await _preview_invite_row(session, short_code=code)
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Code d'invitation invalide ou expiré")
     return dict(row)
 
 
@@ -659,14 +790,11 @@ async def accept_invite_signup(
     body: AcceptInviteSignupIn,
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    invite = (
-        await session.execute(
-            text(
-                "SELECT id, organization_id, email, role FROM organization_invites"
-                " WHERE token = :token AND accepted_at IS NULL AND expires_at > now()"
-            ).bindparams(token=body.token),
-        )
-    ).mappings().first()
+    if body.password != body.password_confirm:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Les mots de passe ne correspondent pas")
+    if not body.token and not body.short_code:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Token ou code d'invitation requis")
+    invite = await _load_pending_invite(session, token=body.token, short_code=body.short_code)
     if not invite:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation invalide ou expirée")
     if body.email.lower() != invite["email"].lower():
@@ -703,10 +831,21 @@ async def accept_invite_signup(
     )
     slug = (
         await session.execute(
-            text("SELECT slug FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(oid=org_id),
+            text("SELECT slug, name FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(oid=org_id),
         )
-    ).scalar()
+    ).mappings().first()
     await session.commit()
+
+    org_label = slug["name"] if slug else org_id
+    await notify_admin(
+        event="invite_accept_signup",
+        subject="Nouveau membre via invitation",
+        body=(
+            f"Organisation : {org_label}\n"
+            f"Membre : {body.full_name} <{body.email}>\n"
+            f"Rôle : {invite['role']}"
+        ),
+    )
 
     access = create_access_token(user_id, org_id, invite["role"])
     refresh = await create_refresh_token(session, user_id, ip=request.client.host if request.client else None)
@@ -714,7 +853,7 @@ async def accept_invite_signup(
     return {
         "access_token": access,
         "token_type": "bearer",
-        "user": _user_payload(str(user_id), {"full_name": body.full_name, "email": body.email, "role": invite["role"], "organization_id": org_id, "onboarding_completed": True}, slug or ""),
+        "user": _user_payload(str(user_id), {"full_name": body.full_name, "email": body.email, "role": invite["role"], "organization_id": org_id, "onboarding_completed": True}, slug["slug"] if slug else ""),
     }
 
 
@@ -726,14 +865,9 @@ async def accept_invite_login(
     body: AcceptInviteLoginIn,
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    invite = (
-        await session.execute(
-            text(
-                "SELECT id, organization_id, email, role FROM organization_invites"
-                " WHERE token = :token AND accepted_at IS NULL AND expires_at > now()"
-            ).bindparams(token=body.token),
-        )
-    ).mappings().first()
+    if not body.token and not body.short_code:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Token ou code d'invitation requis")
+    invite = await _load_pending_invite(session, token=body.token, short_code=body.short_code)
     if not invite:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation invalide ou expirée")
 
@@ -762,10 +896,21 @@ async def accept_invite_login(
     )
     slug = (
         await session.execute(
-            text("SELECT slug FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(oid=org_id),
+            text("SELECT slug, name FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(oid=org_id),
         )
-    ).scalar()
+    ).mappings().first()
     await session.commit()
+
+    org_label = slug["name"] if slug else org_id
+    await notify_admin(
+        event="invite_accept_login",
+        subject="Membre existant a rejoint une organisation",
+        body=(
+            f"Organisation : {org_label}\n"
+            f"Membre : {row['full_name']} <{row['email']}>\n"
+            f"Rôle : {invite['role']}"
+        ),
+    )
 
     access = create_access_token(row["id"], org_id, invite["role"])
     refresh = await create_refresh_token(session, row["id"], ip=request.client.host if request.client else None)
@@ -776,7 +921,7 @@ async def accept_invite_login(
         "user": _user_payload(
             str(row["id"]),
             {**dict(row), "role": invite["role"], "organization_id": org_id},
-            slug or "",
+            slug["slug"] if slug else "",
         ),
     }
 

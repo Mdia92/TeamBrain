@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-import secrets
-import uuid
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_role
+from app.config import settings
 from app.db.session import get_db
+from app.delivery.email import notify_admin
 from app.pagination import cursor_clause, paginate_response
+from app.services.invites import insert_organization_invite
 from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/invites", tags=["invites"])
@@ -37,7 +37,7 @@ async def list_invites(
         for r in (
             await session.execute(
                 text(
-                    "SELECT id, email, role, expires_at, created_at FROM organization_invites"
+                    "SELECT id, email, role, short_code, expires_at, created_at FROM organization_invites"
                     " WHERE organization_id = CAST(:oid AS uuid) AND accepted_at IS NULL"
                     f"{cc} ORDER BY created_at DESC, id DESC LIMIT :lim"
                 ).bindparams(**params),
@@ -56,21 +56,48 @@ async def create_invite(
 ) -> dict:
     if body.role not in ("admin", "manager", "member", "field_agent"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Rôle invalide")
-    token = secrets.token_urlsafe(32)
-    iid = uuid.uuid4()
-    await session.execute(
-        text(
-            "INSERT INTO organization_invites (id, organization_id, email, role, token, expires_at, invited_by)"
-            " VALUES (CAST(:iid AS uuid), CAST(:oid AS uuid), :email, :role, :token,"
-            " now() + INTERVAL '7 days', CAST(:uid AS uuid))"
-        ).bindparams(
-            iid=str(iid),
-            oid=str(user["organization_id"]),
-            email=body.email,
-            role=body.role,
-            token=token,
-            uid=str(user["id"]),
-        ),
+
+    dup = (
+        await session.execute(
+            text(
+                "SELECT 1 FROM organization_invites"
+                " WHERE organization_id = CAST(:oid AS uuid) AND lower(email) = lower(:email)"
+                " AND accepted_at IS NULL AND expires_at > now()"
+            ).bindparams(oid=str(user["organization_id"]), email=body.email),
+        )
+    ).first()
+    if dup:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Une invitation est déjà en attente pour cet email")
+
+    created = await insert_organization_invite(
+        session,
+        org_id=str(user["organization_id"]),
+        email=body.email,
+        role=body.role,
+        invited_by=str(user["id"]),
     )
     await session.commit()
-    return {"id": str(iid), "email": body.email, "role": body.role, "token": token, "invite_url": f"/invite/{token}"}
+
+    front = settings.frontend_url.rstrip("/")
+    invite_url = f"{front}{created['invite_url']}"
+    await notify_admin(
+        event="team_invite",
+        subject="Invitation équipe créée",
+        body=(
+            f"Organisation ID : {user['organization_id']}\n"
+            f"Invité par : {user.get('full_name')} <{user.get('email')}>\n"
+            f"Email invité : {body.email}\n"
+            f"Rôle : {body.role}\n"
+            f"Code : {created['short_code']}\n"
+            f"Lien : {invite_url}"
+        ),
+    )
+
+    return {
+        "id": created["id"],
+        "email": body.email,
+        "role": body.role,
+        "token": created["token"],
+        "short_code": created["short_code"],
+        "invite_url": created["invite_url"],
+    }

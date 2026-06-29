@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.memory_service import MemoryService
 from app.delivery.whatsapp import whatsapp_client
+from app.services.meeting_suggestions import execute_meeting_suggestion
 
 
 async def create_pending_action(
@@ -132,6 +133,14 @@ async def _execute_action(
             ),
         )
         return str(payload.get("task_id"))
+
+    if action_type == "meeting_suggestion":
+        return await execute_meeting_suggestion(
+            session,
+            org_id=org_id,
+            user_id=user_id,
+            payload=payload,
+        )
 
     if action_type == "add_memory":
         brain = MemoryService(session)

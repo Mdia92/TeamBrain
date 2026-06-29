@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/app/lib/api";
+import * as authApi from "@/app/lib/auth-api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { canManageOrg } from "@/app/lib/permissions";
 import { cn } from "@/app/lib/utils";
@@ -55,6 +56,11 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [savingModules, setSavingModules] = useState(false);
   const [paydunya, setPaydunya] = useState<{ configured: boolean; mode: string; tiers?: Record<string, { price_fcfa: number }> } | null>(null);
+  const [orgName, setOrgName] = useState("");
+  const [orgDescription, setOrgDescription] = useState("");
+  const [orgGoals, setOrgGoals] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
 
   useEffect(() => {
     if (user && !isAdmin) {
@@ -68,7 +74,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     setModules((user?.settings?.modules as string[]) ?? []);
-  }, [user?.settings]);
+    setOrgName(user?.org_name ?? "");
+    setOrgDescription(String(user?.settings?.org_description ?? ""));
+    setOrgGoals(String(user?.settings?.org_goals ?? ""));
+  }, [user?.settings, user?.org_name]);
 
   useEffect(() => {
     Promise.all([
@@ -90,6 +99,24 @@ export default function SettingsPage() {
     await apiClient.patch(`/api/members/${memberId}/role`, { role });
     const m = await apiClient.get<{ items: typeof members }>("/api/members");
     setMembers(m.items);
+  }
+
+  async function saveOrgProfile() {
+    setSavingProfile(true);
+    setProfileMessage("");
+    try {
+      await authApi.patchOrgSettings({
+        name: orgName.trim(),
+        org_description: orgDescription.trim(),
+        org_goals: orgGoals.trim(),
+      });
+      await refreshUser();
+      setProfileMessage("Profil enregistré — la mémoire organisationnelle a été mise à jour.");
+    } catch (e) {
+      setProfileMessage(e instanceof Error ? e.message : "Erreur");
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
   async function toggleModule(id: string) {
@@ -142,13 +169,55 @@ export default function SettingsPage() {
           {tab === "general" && (
             <section className="tb-card space-y-4 p-6">
               <h2 className="font-semibold">Organisation</h2>
-              <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                <div>
-                  <dt className="text-slate-500">Nom</dt>
-                  <dd className="font-medium">{user?.org_name}</dd>
+              {isAdmin ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="tb-label">Nom</label>
+                    <input
+                      value={orgName}
+                      onChange={(e) => setOrgName(e.target.value)}
+                      className="tb-input"
+                    />
+                  </div>
+                  <div>
+                    <label className="tb-label">Mission / activité</label>
+                    <textarea
+                      value={orgDescription}
+                      onChange={(e) => setOrgDescription(e.target.value)}
+                      rows={3}
+                      className="tb-input min-h-[80px] resize-y"
+                    />
+                  </div>
+                  <div>
+                    <label className="tb-label">Objectifs</label>
+                    <textarea
+                      value={orgGoals}
+                      onChange={(e) => setOrgGoals(e.target.value)}
+                      rows={2}
+                      className="tb-input min-h-[60px] resize-y"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={savingProfile}
+                    onClick={() => void saveOrgProfile()}
+                    className="tb-btn-primary h-9 px-4 text-sm"
+                  >
+                    {savingProfile ? "Enregistrement…" : "Enregistrer le profil"}
+                  </button>
+                  {profileMessage && <p className="text-sm text-slate-600 dark:text-slate-400">{profileMessage}</p>}
                 </div>
+              ) : (
+                <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-slate-500">Nom</dt>
+                    <dd className="font-medium">{user?.org_name}</dd>
+                  </div>
+                </dl>
+              )}
+              <dl className="grid gap-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2 dark:border-slate-800">
                 <div>
-                  <dt className="text-slate-500">Identifiant</dt>
+                  <dt className="text-slate-500">URL interne</dt>
                   <dd className="font-medium">{user?.org_slug}</dd>
                 </div>
                 <div>

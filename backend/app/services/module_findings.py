@@ -17,6 +17,7 @@ FINDING_TYPES = frozenset(
         "action_item",
         "task_event",
         "entity",
+        "meeting_note",
     }
 )
 

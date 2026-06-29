@@ -64,3 +64,15 @@ def _sqlite_test_db(_init_sqlite_schema) -> None:
 
     asyncio.run(_truncate())
     yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits() -> None:
+    from app.rate_limit import limiter
+
+    storage = getattr(limiter, "_storage", None)
+    if storage is not None and hasattr(storage, "storage"):
+        storage.storage.clear()
+    yield
+    if storage is not None and hasattr(storage, "storage"):
+        storage.storage.clear()

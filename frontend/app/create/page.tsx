@@ -62,12 +62,15 @@ export default function CreateOrgPage() {
 
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [orgName, setOrgName] = useState("");
+  const [orgDescription, setOrgDescription] = useState("");
+  const [orgGoals, setOrgGoals] = useState("");
   const [industry, setIndustry] = useState("ngo");
   const [teamSize, setTeamSize] = useState("1-10");
   const [language, setLanguage] = useState("fr");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [invites, setInvites] = useState<InviteRow[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
@@ -86,6 +89,9 @@ export default function CreateOrgPage() {
       if (isLoggedIn) {
         if (!user?.onboarding_completed) {
           await authApi.completeOnboarding({
+            organization_name: orgName,
+            org_description: orgDescription,
+            org_goals: orgGoals,
             industry,
             team_size: teamSize,
             primary_language: language,
@@ -108,17 +114,26 @@ export default function CreateOrgPage() {
           router.push(`/${profile?.org_slug ?? result.user.org_slug}/dashboard`);
         }
       } else {
+        if (password !== passwordConfirm) {
+          setError("Les mots de passe ne correspondent pas");
+          setLoading(false);
+          return;
+        }
         await signup({
           organization_name: orgName,
           full_name: fullName,
           email,
           password,
+          password_confirm: passwordConfirm,
           industry,
           team_size: teamSize,
           primary_language: language,
           inviteCode: inviteCode!,
         });
         await authApi.completeOnboarding({
+          organization_name: orgName,
+          org_description: orgDescription,
+          org_goals: orgGoals,
           industry,
           team_size: teamSize,
           primary_language: language,
@@ -238,6 +253,26 @@ export default function CreateOrgPage() {
                 />
               </div>
               <div>
+                <label className="tb-label">Mission / activité principale</label>
+                <textarea
+                  value={orgDescription}
+                  onChange={(e) => setOrgDescription(e.target.value)}
+                  rows={3}
+                  placeholder="Décrivez ce que fait votre organisation — cette information alimente la mémoire du système."
+                  className="tb-input min-h-[80px] resize-y"
+                />
+              </div>
+              <div>
+                <label className="tb-label">Objectifs (optionnel)</label>
+                <textarea
+                  value={orgGoals}
+                  onChange={(e) => setOrgGoals(e.target.value)}
+                  rows={2}
+                  placeholder="Ex. améliorer le suivi terrain, centraliser les décisions…"
+                  className="tb-input min-h-[60px] resize-y"
+                />
+              </div>
+              <div>
                 <label className="text-sm font-medium">Secteur</label>
                 <select
                   value={industry}
@@ -306,6 +341,17 @@ export default function CreateOrgPage() {
                   minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 dark:border-stone-700 dark:bg-stone-800"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Confirmer le mot de passe</label>
+                <input
+                  required
+                  type="password"
+                  minLength={8}
+                  value={passwordConfirm}
+                  onChange={(e) => setPasswordConfirm(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 dark:border-stone-700 dark:bg-stone-800"
                 />
               </div>
