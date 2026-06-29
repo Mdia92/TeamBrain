@@ -24,7 +24,7 @@ def main() -> int:
 
     email = f"test-{secrets.token_hex(4)}@example.sn"
     r = c.post(
-        "/api/auth/signup?code=TIMTIMOL2026",
+        "/api/auth/signup?code=2026timtimol",
         json={
             "email": email,
             "password": "TestPass123!",
@@ -112,7 +112,7 @@ def main() -> int:
         errors.append(f"memory list: {rm.status_code}")
 
     rd = c.post(
-        "/api/auth/signup?code=TIMTIMOL2026",
+        "/api/auth/signup?code=2026timtimol",
         json={
             "email": email,
             "password": "TestPass123!",

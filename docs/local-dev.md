@@ -11,7 +11,7 @@ TeamBrain uses **non-default ports** so it can run alongside other projects on `
 
 **Marketing home:** http://localhost:3010/ always shows the landing page (presentation). Login is at `/login`; signup and org wizard at `/create` (pilot invite code required). Logout returns to `/`.
 
-**Pilot signup:** code `TIMTIMOL2026` (or `PILOT_INVITE_CODE` on Railway) + `@timtimol.sn` in production. Local dev: any email with valid code.
+**Pilot signup:** invite code required on `/create` (set `PILOT_INVITE_CODE` on Railway). Any email accepted unless `PILOT_EMAIL_DOMAINS` is set.
 
 **Assistant:** UI label follows org language — **Ask AI** (English), **Xam** (French/Wolof). Tune LLM name via `ASSISTANT_NAME` / `ASSISTANT_PERSONALITY` in `backend/.env`.
 

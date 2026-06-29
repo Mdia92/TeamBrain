@@ -9,7 +9,7 @@ from app.main import app
 
 client = TestClient(app)
 
-VALID_CODE = "TIMTIMOL2026"
+VALID_CODE = "2026timtimol"
 
 
 def test_validate_invite_code_valid():
@@ -21,7 +21,7 @@ def test_validate_invite_code_valid():
 
 
 def test_validate_invite_code_case_insensitive():
-    r = client.post("/api/auth/validate-invite-code?code=timtimol2026")
+    r = client.post("/api/auth/validate-invite-code?code=2026TIMTIMOL")
     assert r.status_code == 200
     assert r.json()["valid"] is True
 
@@ -76,9 +76,10 @@ def test_signup_with_valid_code():
     assert r.json()["user"]["email"] == email
 
 
-def test_signup_rejects_non_pilot_email_when_pilot_mode(monkeypatch):
+def test_signup_rejects_non_pilot_email_when_domains_configured(monkeypatch):
     monkeypatch.setattr(settings, "pilot_mode", True)
     monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "pilot_email_domains", "timtimol.org")
     r = client.post(
         f"/api/auth/signup?code={VALID_CODE}",
         json={
@@ -92,17 +93,18 @@ def test_signup_rejects_non_pilot_email_when_pilot_mode(monkeypatch):
     assert "timtimol" in r.json()["detail"].lower()
 
 
-def test_signup_allows_timtimol_email_when_pilot_mode(monkeypatch):
+def test_signup_allows_any_email_when_no_domain_gate(monkeypatch):
     monkeypatch.setattr(settings, "pilot_mode", True)
     monkeypatch.setattr(settings, "environment", "production")
-    email = f"pilot-{secrets.token_hex(4)}@timtimol.sn"
+    monkeypatch.setattr(settings, "pilot_email_domains", "")
+    email = f"anyone-{secrets.token_hex(4)}@gmail.com"
     r = client.post(
         f"/api/auth/signup?code={VALID_CODE}",
         json={
             "email": email,
             "password": "TestPass123!",
-            "full_name": "Timtimol User",
-            "organization_name": "Timtimol Org",
+            "full_name": "Pilot User",
+            "organization_name": "Pilot Org",
         },
     )
     assert r.status_code == 200

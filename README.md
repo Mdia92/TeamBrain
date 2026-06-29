@@ -51,7 +51,7 @@ npm install
 npm run dev   # http://localhost:3010
 ```
 
-**Pilot signup (production):** code `TIMTIMOL2026` + `@timtimol.sn` email only. See [docs/deploy.md](docs/deploy.md).
+**Pilot signup (production):** invite code required — configure `PILOT_INVITE_CODE` on Railway. See [docs/deploy.md](docs/deploy.md).
 
 ## Deploy
 

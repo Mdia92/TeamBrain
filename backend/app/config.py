@@ -27,10 +27,10 @@ class Settings(BaseSettings):
     csp_extra_connect_src: str = ""
     frontend_url: str = "http://localhost:3010"
 
-    # Pilot gate (production defaults: code + @timtimol.sn only)
+    # Pilot gate — invite code only (set PILOT_INVITE_CODE on Railway; never show in UI)
     pilot_mode: bool | None = None  # None → True when environment=production
-    pilot_invite_code: str = "TIMTIMOL2026"
-    pilot_email_domains: str = "timtimol.sn"
+    pilot_invite_code: str = "2026timtimol"
+    pilot_email_domains: str = ""  # empty = any email; comma-separated to restrict later
 
     # Optional Google OAuth (login only — no public signup via Google)
     google_oauth_client_id: str = ""

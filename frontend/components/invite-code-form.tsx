@@ -59,15 +59,15 @@ export function InviteCodeForm({ onValidated, submitLabel = "Continuer" }: Props
         <input
           id="invite_code"
           name="invite_code"
+          type="password"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           required
           autoComplete="off"
-          placeholder="TIMTIMOL2026"
           className="tb-input"
         />
         <p className="mt-1 text-xs text-slate-500">
-          Réservé à l&apos;équipe Timtimol — utilisez votre email @timtimol.sn pour créer le compte.
+          Code fourni par l&apos;équipe Timtimol — ne le partagez pas publiquement.
         </p>
       </div>
       {error && <p className="text-sm text-rose-600">{error}</p>}

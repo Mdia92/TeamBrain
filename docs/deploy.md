@@ -21,8 +21,8 @@
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `PILOT_INVITE_CODE` | `TIMTIMOL2026` | Shared team code on `/create` |
-| `PILOT_EMAIL_DOMAINS` | `timtimol.sn` | Only `@timtimol.sn` can register |
+| `PILOT_INVITE_CODE` | (set in Railway only) | Shared team code — never shown in the UI |
+| `PILOT_EMAIL_DOMAINS` | *(empty)* | Optional comma list e.g. `timtimol.org` to restrict emails |
 | `PILOT_MODE` | `true` when `ENVIRONMENT=production` | Set `false` to disable domain gate |
 
 Team members invited by email (`/invite/{token}`) join without the pilot code.
