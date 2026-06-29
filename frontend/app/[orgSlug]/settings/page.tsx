@@ -231,7 +231,10 @@ export default function SettingsPage() {
           {tab === "team" && isAdmin && (
             <div className="space-y-6">
               <section className="tb-card p-6">
-                <h2 className="font-semibold">Membres</h2>
+                <h2 className="font-semibold">Membres actifs</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Comptes ayant accepté l&apos;invitation et rejoint l&apos;équipe. Les invitations non confirmées sont listées ci-dessous.
+                </p>
                 <ul className="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
                   {members.map((m) => (
                     <li key={m.id} className="flex items-center gap-3 py-3">
@@ -254,7 +257,7 @@ export default function SettingsPage() {
                 </ul>
               </section>
               <section className="tb-card p-6">
-                <h2 className="font-semibold">Invitations</h2>
+                <h2 className="font-semibold">Invitations en attente</h2>
                 <div className="mt-4">
                   <TeamInvitesSection />
                 </div>

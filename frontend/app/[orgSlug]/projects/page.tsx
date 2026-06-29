@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { FolderKanban, Plus } from "lucide-react";
+import { FolderKanban, Plus, Trash2 } from "lucide-react";
 import { apiClient, ApiRequestError } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { canCreateProject, canEditContent, isReadOnly, memberApprovalHint } from "@/app/lib/permissions";
@@ -162,9 +162,33 @@ export default function ProjectsPage() {
       ) : (
         <div ref={gridRef} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projects.map((p) => (
-            <Link key={p.id} href={`/${orgSlug}/projects/${p.id}`}>
-              <TbCard stagger interactive className="block p-5">
-                <h3 className="font-semibold text-slate-900 dark:text-slate-100">{p.name}</h3>
+            <TbCard
+              key={p.id}
+              stagger
+              interactive
+              className="relative block p-5"
+              onClick={() => setSelected(p)}
+            >
+              {canEdit && (
+                <button
+                  type="button"
+                  title="Supprimer"
+                  className="absolute right-3 top-3 rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!window.confirm(`${t("deleteConfirm")} « ${p.name} » ?`)) return;
+                    void apiClient.delete(`/api/projects/${p.id}`).then(() => {
+                      toast(t("deleted"), "success");
+                      void load();
+                    }).catch((err) => {
+                      toast(err instanceof ApiRequestError ? err.message : t("deleteError"), "error");
+                    });
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+              <h3 className="pr-8 font-semibold text-slate-900 dark:text-slate-100">{p.name}</h3>
                 {p.client_name && <p className="mt-1 text-sm text-slate-500">{p.client_name}</p>}
                 {p.description && (
                   <p className="mt-2 line-clamp-2 text-sm text-slate-600 dark:text-slate-400">{p.description}</p>
@@ -172,8 +196,7 @@ export default function ProjectsPage() {
                 <span className="mt-3 inline-block rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                   {p.status}
                 </span>
-              </TbCard>
-            </Link>
+            </TbCard>
           ))}
         </div>
       )}
@@ -189,8 +212,8 @@ export default function ProjectsPage() {
               <span className="text-slate-500">Statut :</span>{" "}
               <span className="font-medium capitalize">{selected.status}</span>
             </p>
-            <Link href={`/${orgSlug}/tasks`} className="tb-btn-primary inline-flex h-10">
-              Voir les tâches →
+            <Link href={`/${orgSlug}/projects/${selected.id}`} className="tb-btn-primary inline-flex h-10">
+              Ouvrir le projet →
             </Link>
             <Link href={`/${orgSlug}/projects/${selected.id}?tab=timeline`} className="tb-btn-secondary mt-2 inline-flex h-10 w-full justify-center">
               Chronologie →

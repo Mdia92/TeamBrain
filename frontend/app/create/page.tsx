@@ -155,18 +155,26 @@ export default function CreateOrgPage() {
   }
 
   function addInviteChip() {
-    const email = inviteEmail.trim().toLowerCase();
-    if (!email) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const chipEmail = inviteEmail.trim().toLowerCase();
+    if (!chipEmail) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(chipEmail)) {
       setError("Email invalide");
       return;
     }
-    if (invites.some((i) => i.email === email)) {
+    if (isLoggedIn && user?.email && chipEmail === user.email.toLowerCase()) {
+      setError("Vous êtes déjà membre — inutile de vous inviter vous-même");
+      return;
+    }
+    if (!isLoggedIn && chipEmail === email.trim().toLowerCase()) {
+      setError("Cet email est celui du compte admin — pas besoin de s'inviter");
+      return;
+    }
+    if (invites.some((i) => i.email === chipEmail)) {
       setError("Cet email est déjà dans la liste");
       return;
     }
     setError("");
-    setInvites([...invites, { email, role: inviteRole }]);
+    setInvites([...invites, { email: chipEmail, role: inviteRole }]);
     setInviteEmail("");
   }
 
@@ -361,16 +369,20 @@ export default function CreateOrgPage() {
           {step === inviteStep && (
             <div className="space-y-4">
               <h1 className="text-2xl font-bold">Inviter l&apos;équipe</h1>
-              <p className="text-sm text-stone-500">Optionnel — tapez un email et appuyez sur Entrée.</p>
+              <p className="text-sm text-stone-500">
+                Optionnel — les personnes ajoutées recevront un email avec un lien et un code unique.
+                Elles restent <strong>en attente</strong> jusqu&apos;à acceptation et n&apos;apparaissent pas comme membres actifs.
+              </p>
               <div className="rounded-lg border border-stone-200 p-3 dark:border-stone-700">
+                <p className="mb-2 text-xs font-medium text-amber-800 dark:text-amber-300">Invitations en attente (envoi à la fin)</p>
                 <div className="mb-2 flex flex-wrap gap-2">
                   {invites.map((inv) => (
                     <span
                       key={inv.email}
-                      className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs text-primary"
+                      className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
                     >
                       {inv.email}
-                      <span className="text-stone-500">({ROLES.find((r) => r.value === inv.role)?.label})</span>
+                      <span className="text-stone-500">({ROLES.find((r) => r.value === inv.role)?.label}) · en attente</span>
                       <button
                         type="button"
                         onClick={() => setInvites(invites.filter((i) => i.email !== inv.email))}

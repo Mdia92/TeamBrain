@@ -104,12 +104,14 @@ async def create_task(
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     tid = uuid.uuid4()
+    pid_sql = "CAST(:pid AS uuid)" if body.project_id else "NULL"
+    aid_sql = "CAST(:aid AS uuid)" if body.assignee_id else "NULL"
     await session.execute(
         text(
             "INSERT INTO tasks (id, organization_id, project_id, title, description,"
             " assignee_id, start_date, due_date, priority, status, source, created_by)"
-            " VALUES (CAST(:tid AS uuid), CAST(:oid AS uuid), CAST(:pid AS uuid), :title, :desc,"
-            " CAST(:aid AS uuid), :start, :due, :priority, :status, 'manual', CAST(:uid AS uuid))"
+            f" VALUES (CAST(:tid AS uuid), CAST(:oid AS uuid), {pid_sql}, :title, :desc,"
+            f" {aid_sql}, :start, :due, :priority, :status, 'manual', CAST(:uid AS uuid))"
         ).bindparams(
             tid=str(tid),
             oid=str(user["organization_id"]),

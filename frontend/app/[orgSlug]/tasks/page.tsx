@@ -21,6 +21,7 @@ import { TaskBoard, type BoardTask } from "@/components/task-board";
 import { CardSkeleton } from "@/components/ui/skeleton";
 import { DetailDrawer } from "@/components/ui/detail-drawer";
 import { DeleteResourceButton } from "@/components/delete-resource-button";
+import { CreateTaskButton } from "@/components/create-task-dialog";
 
 export default function TasksPage() {
   const params = useParams();
@@ -90,6 +91,7 @@ export default function TasksPage() {
       <PageHeader
         title={t("tasks")}
         description={canDrag ? t("taskBoardDragHint") : t("taskBoardViewHint")}
+        actions={canAdd ? <CreateTaskButton onCreated={() => void load()} /> : undefined}
       />
       {!canDrag && (
         <p className="rounded-input border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
@@ -101,6 +103,7 @@ export default function TasksPage() {
           icon={CheckSquare}
           title={t("tasksEmpty")}
           description={t("tasksEmptyHint")}
+          action={canAdd ? <CreateTaskButton onCreated={() => void load()} /> : undefined}
         />
       ) : (
         <TaskBoard

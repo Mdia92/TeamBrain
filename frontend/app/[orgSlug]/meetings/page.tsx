@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { Mic, Upload } from "lucide-react";
+import { Mic, Trash2, Upload } from "lucide-react";
 import { apiClient, uploadFile, ApiRequestError } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { canEditContent, memberApprovalHint } from "@/app/lib/permissions";
@@ -13,6 +13,7 @@ import { CardSkeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { TbCard } from "@/components/ui/tb-card";
 import { DetailDrawer } from "@/components/ui/detail-drawer";
+import { DeleteResourceButton } from "@/components/delete-resource-button";
 import { useGsapStagger } from "@/hooks/use-gsap-stagger";
 
 type Meeting = {
@@ -208,16 +209,35 @@ export default function MeetingsPage() {
           {meetings.map((m) => {
             const st = statusLabel(m.processing_status);
             return (
-              <TbCard key={m.id} stagger interactive onClick={() => setSelected(m)} className="p-5">
+              <TbCard key={m.id} stagger interactive onClick={() => setSelected(m)} className="relative p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold text-slate-900 dark:text-slate-100">{m.title}</h3>
+                    <h3 className="pr-8 font-semibold text-slate-900 dark:text-slate-100">{m.title}</h3>
                     <p className="mt-1 text-sm text-slate-500">
                       {new Date(m.date).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}
                     </p>
                   </div>
                   <span className={cn("shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium", st.className)}>{st.label}</span>
                 </div>
+                {canEdit && (
+                  <button
+                    type="button"
+                    title="Supprimer"
+                    className="absolute right-3 top-3 rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!window.confirm(`${t("deleteConfirm")} « ${m.title} » ?`)) return;
+                      void apiClient.delete(`/api/meetings/${m.id}`).then(() => {
+                        toast(t("deleted"), "success");
+                        void load();
+                      }).catch((err) => {
+                        toast(err instanceof ApiRequestError ? err.message : t("deleteError"), "error");
+                      });
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
                 <div className="mt-4 flex items-center justify-between">
                   <ParticipantStack title={m.title} />
                   {m.decisionsCount > 0 && (
@@ -260,6 +280,17 @@ export default function MeetingsPage() {
                   ))}
                 </ul>
               </div>
+            )}
+            {canEdit && selected && (
+              <DeleteResourceButton
+                path={`/api/meetings/${selected.id}`}
+                label={selected.title}
+                onDeleted={() => {
+                  setSelected(null);
+                  setDetail(null);
+                  void load();
+                }}
+              />
             )}
           </div>
         ) : (

@@ -13,6 +13,8 @@ TeamBrain uses **non-default ports** so it can run alongside other projects on `
 
 **Pilot signup:** invite code required on `/create` (set `PILOT_INVITE_CODE` on Railway). Any email accepted unless `PILOT_EMAIL_DOMAINS` is set.
 
+**Team invites:** onboarding/settings invites stay **pending** until the invitee accepts via `/invite/{token}` or `/join` + code `TB-XXXXXX`. Configure `SMTP_*` in `backend/.env` to email invitees; without SMTP the API still creates the invite and the UI shows the link to copy.
+
 **Assistant:** UI label follows org language — **Ask AI** (English), **Xam** (French/Wolof). Tune LLM name via `ASSISTANT_NAME` / `ASSISTANT_PERSONALITY` in `backend/.env`.
 
 **Per-org rules:** defaults in `backend/app/policy/default_policy.yaml`; overrides in `organizations.settings.policy`. Admins edit via **Paramètres → Règles** or `GET/PATCH /api/organizations/current/policy`.

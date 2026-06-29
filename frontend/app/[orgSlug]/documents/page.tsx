@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Camera, ExternalLink, FileText, MapPin, MapPinned, Mic, Wifi, WifiOff } from "lucide-react";
+import { Camera, ExternalLink, FileText, MapPin, MapPinned, Mic, Trash2, Wifi, WifiOff } from "lucide-react";
 import { apiClient, ApiRequestError, downloadDocumentFile, OfflineQueuedError, uploadFile } from "@/app/lib/api";
 import { attachFieldReportPhoto } from "@/app/lib/camera";
 import { useAuth } from "@/app/contexts/AuthContext";
@@ -19,6 +19,7 @@ import { CardSkeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { TbCard } from "@/components/ui/tb-card";
 import { DetailDrawer } from "@/components/ui/detail-drawer";
+import { DeleteResourceButton } from "@/components/delete-resource-button";
 import { VoiceNoteCapture } from "@/components/voice-note-capture";
 import { useGsapStagger } from "@/hooks/use-gsap-stagger";
 
@@ -382,10 +383,10 @@ export default function DocumentsPage() {
           {display.map((d) => {
             const hasGps = d.gps_latitude != null && d.gps_longitude != null;
             return (
-              <TbCard key={d.id} stagger interactive onClick={() => setSelected(d)} className="p-5">
+              <TbCard key={d.id} stagger interactive onClick={() => setSelected(d)} className="relative p-5">
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 pr-8">
                       <h3 className="font-medium">{d.title}</h3>
                       {d.doc_type === "field_report" && (
                         <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs text-primary dark:bg-indigo-950">
@@ -407,6 +408,26 @@ export default function DocumentsPage() {
                     </div>
                     {d.mission_date && <p className="mt-1 text-xs text-slate-500">{d.mission_date}</p>}
                   </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                  {canEdit && (
+                    <button
+                      type="button"
+                      title="Supprimer"
+                      className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!window.confirm(`${t("deleteConfirm")} « ${d.title} » ?`)) return;
+                        void apiClient.delete(`/api/documents/${d.id}`).then(() => {
+                          toast(t("deleted"), "success");
+                          void load();
+                        }).catch((err) => {
+                          toast(err instanceof ApiRequestError ? err.message : t("deleteError"), "error");
+                        });
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                   {canEdit && (
                     <button
                       type="button"
@@ -419,6 +440,7 @@ export default function DocumentsPage() {
                       Résumer (IA)
                     </button>
                   )}
+                  </div>
                 </div>
                 {d.ai_summary && <p className="mt-2 line-clamp-2 text-sm text-slate-500">{d.ai_summary}</p>}
               </TbCard>
@@ -457,6 +479,16 @@ export default function DocumentsPage() {
                 <ExternalLink className="h-4 w-4" />
                 Télécharger le fichier
               </button>
+            )}
+            {canEdit && (
+              <DeleteResourceButton
+                path={`/api/documents/${selected.id}`}
+                label={selected.title}
+                onDeleted={() => {
+                  setSelected(null);
+                  void load();
+                }}
+              />
             )}
           </div>
         )}

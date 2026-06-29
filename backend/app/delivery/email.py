@@ -27,6 +27,28 @@ def _send_smtp_sync(*, to: str, subject: str, body: str) -> None:
         smtp.send_message(msg)
 
 
+async def send_email(*, to: str, subject: str, body: str) -> bool:
+    """Send a transactional email. Returns True if sent via SMTP, False if logged only."""
+    to_addr = to.strip()
+    if not to_addr:
+        return False
+    if settings.smtp_host:
+        try:
+            await asyncio.to_thread(
+                _send_smtp_sync,
+                to=to_addr,
+                subject=subject,
+                body=body,
+            )
+            logger.info("email_sent", to=to_addr, subject=subject)
+            return True
+        except Exception:
+            logger.exception("email_send_failed", to=to_addr, subject=subject)
+            return False
+    logger.info("email_logged", to=to_addr, subject=subject, body=body)
+    return False
+
+
 async def notify_admin(*, event: str, subject: str, body: str) -> None:
     """Send activity notification to the platform admin email."""
     to = (settings.admin_notification_email or "").strip()
@@ -35,16 +57,4 @@ async def notify_admin(*, event: str, subject: str, body: str) -> None:
         return
 
     full_body = f"{body}\n\n—\nÉvénement : {event}\nTeamBrain"
-    if settings.smtp_host:
-        try:
-            await asyncio.to_thread(
-                _send_smtp_sync,
-                to=to,
-                subject=f"[TeamBrain] {subject}",
-                body=full_body,
-            )
-            logger.info("admin_notification_sent", event=event, to=to)
-        except Exception:
-            logger.exception("admin_notification_failed", event=event, to=to)
-    else:
-        logger.info("admin_notification", event=event, to=to, subject=subject, body=full_body)
+    await send_email(to=to, subject=f"[TeamBrain] {subject}", body=full_body)

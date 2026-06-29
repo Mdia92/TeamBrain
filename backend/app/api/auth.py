@@ -30,7 +30,8 @@ from app.db.sql_compat import is_sqlite, now_sql, settings_column, trial_ends_sq
 from app.delivery.email import notify_admin
 from app.rate_limit import limiter
 from app.services.industry_presets import ALL_MODULES, build_org_settings, preset_for_industry
-from app.services.invites import insert_organization_invite
+from app.services.invite_delivery import deliver_organization_invite
+from app.services.invites import email_is_active_member, insert_organization_invite
 from app.services.org_profile import write_org_profile_memory
 from app.services.slug import unique_org_slug
 from app.trial import get_org_billing
@@ -591,16 +592,22 @@ async def create_org_for_user(
             oid=str(org_id), uid=str(user["id"])
         ),
     )
+    created_invites: list[dict[str, str]] = []
     for inv in body.invites:
         if inv.role not in ("admin", "manager", "member", "field_agent"):
             continue
-        await insert_organization_invite(
+        if user.get("email") and inv.email.lower() == str(user["email"]).lower():
+            continue
+        if await email_is_active_member(session, org_id=str(org_id), email=inv.email):
+            continue
+        created = await insert_organization_invite(
             session,
             org_id=str(org_id),
             email=inv.email,
             role=inv.role,
             invited_by=str(user["id"]),
         )
+        created_invites.append({**created, "email": inv.email, "role": inv.role})
     await session.commit()
 
     org_name_row = (
@@ -615,6 +622,16 @@ async def create_org_for_user(
         settings=settings_json,
     )
     await session.commit()
+
+    for inv in created_invites:
+        await deliver_organization_invite(
+            session,
+            org_id=str(org_id),
+            invite=inv,
+            email=inv["email"],
+            role=inv.get("role", "member"),
+            inviter_id=str(user["id"]),
+        )
 
     await notify_admin(
         event="create_org",
@@ -710,6 +727,10 @@ async def complete_onboarding(
     for inv in body.invites:
         if inv.role not in ("admin", "manager", "member", "field_agent"):
             continue
+        if user.get("email") and inv.email.lower() == str(user["email"]).lower():
+            continue
+        if await email_is_active_member(session, org_id=str(user["organization_id"]), email=inv.email):
+            continue
         created = await insert_organization_invite(
             session,
             org_id=str(user["organization_id"]),
@@ -717,7 +738,7 @@ async def complete_onboarding(
             role=inv.role,
             invited_by=str(user["id"]),
         )
-        created_invites.append({**created, "email": inv.email})
+        created_invites.append({**created, "email": inv.email, "role": inv.role})
     if body.invites:
         settings_json["setup_checklist"]["team_invited"] = True
 
@@ -741,15 +762,13 @@ async def complete_onboarding(
     await session.commit()
 
     for inv in created_invites:
-        await notify_admin(
-            event="team_invite",
-            subject="Invitation équipe créée",
-            body=(
-                f"Organisation : {org_name}\n"
-                f"Email invité : {inv.get('email', '')}\n"
-                f"Code : {inv.get('short_code', '')}\n"
-                f"Lien : {settings.frontend_url.rstrip('/')}{inv.get('invite_url', '')}"
-            ),
+        await deliver_organization_invite(
+            session,
+            org_id=str(user["organization_id"]),
+            invite=inv,
+            email=inv["email"],
+            role=inv.get("role", "member"),
+            inviter_id=str(user["id"]),
         )
 
     await notify_admin(

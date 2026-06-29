@@ -83,3 +83,17 @@ async def insert_organization_invite(
         "short_code": short_code,
         "invite_url": f"/invite/{token}",
     }
+
+
+async def email_is_active_member(session: AsyncSession, *, org_id: str, email: str) -> bool:
+    row = (
+        await session.execute(
+            text(
+                "SELECT 1 FROM users u"
+                " JOIN org_memberships om ON om.user_id = u.id"
+                " WHERE om.organization_id = CAST(:oid AS uuid)"
+                " AND om.is_active = true AND lower(u.email) = lower(:email)"
+            ).bindparams(oid=org_id, email=email),
+        )
+    ).first()
+    return row is not None
