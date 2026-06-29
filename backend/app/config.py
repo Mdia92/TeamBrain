@@ -26,9 +26,16 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3010,http://127.0.0.1:3010"
     csp_extra_connect_src: str = ""
     frontend_url: str = "http://localhost:3010"
+
+    # Pilot gate (production defaults: code + @timtimol.sn only)
+    pilot_mode: bool | None = None  # None → True when environment=production
+    pilot_invite_code: str = "TIMTIMOL2026"
+    pilot_email_domains: str = "timtimol.sn"
+
+    # Optional Google OAuth (login only — no public signup via Google)
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""
-    google_oauth_redirect_uri: str = "http://localhost:8010/api/auth/google/callback"
+    google_oauth_redirect_uri: str = ""
 
     gemini_api_key: str = ""
     groq_api_key: str = ""
@@ -59,13 +66,25 @@ class Settings(BaseSettings):
     assistant_name: str = "Ask AI"
     assistant_personality: str = ""
 
-    # Local demo seed only — never commit real values (set in .env)
-    seed_demo_email: str = "amadou@timtimol.sn"
-    seed_demo_password: str = ""
+    @property
+    def google_oauth_redirect(self) -> str:
+        if self.google_oauth_redirect_uri.strip():
+            return self.google_oauth_redirect_uri.strip()
+        return "http://127.0.0.1:8010/api/auth/google/callback"
+
+    @property
+    def pilot_mode_enabled(self) -> bool:
+        if self.pilot_mode is not None:
+            return self.pilot_mode
+        return self.environment == "production"
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        origins = [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
+        front = self.frontend_url.strip().rstrip("/")
+        if front and front not in origins:
+            origins.append(front)
+        return origins
 
     @property
     def cookie_secure(self) -> bool:

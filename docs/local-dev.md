@@ -11,7 +11,7 @@ TeamBrain uses **non-default ports** so it can run alongside other projects on `
 
 **Marketing home:** http://localhost:3010/ always shows the landing page (presentation). Login is at `/login`; signup and org wizard at `/create` (pilot invite code required). Logout returns to `/`.
 
-**Pilot signup:** code `TIMTIMOL2026` — validated via `POST /api/auth/validate-invite-code?code=...`; required on `POST /api/auth/signup?code=...`.
+**Pilot signup:** code `TIMTIMOL2026` (or `PILOT_INVITE_CODE` on Railway) + `@timtimol.sn` in production. Local dev: any email with valid code.
 
 **Assistant:** UI label follows org language — **Ask AI** (English), **Xam** (French/Wolof). Tune LLM name via `ASSISTANT_NAME` / `ASSISTANT_PERSONALITY` in `backend/.env`.
 
@@ -37,7 +37,7 @@ These steps require your credentials and cannot be automated in CI:
      ```
      Get Gemini: [Google AI Studio](https://aistudio.google.com/apikey) · Groq: [console.groq.com](https://console.groq.com)  
      Voice transcription tries **Gemini audio** first, then Groq `whisper-large-v3`, then OpenAI/Deepgram if configured.
-   - Optional: `MISTRAL_API_KEY`, Twilio, S3, Google OAuth
+   - Optional: `MISTRAL_API_KEY`, Twilio, S3
 3. **`frontend/.env.local`** — `NEXT_PUBLIC_API_URL=http://localhost:8010`
 4. Optional: **`PAYDUNYA_API_KEY`**, `PAYDUNYA_MASTER_KEY`, `PAYDUNYA_TOKEN` in `backend/.env` for checkout
 5. **Migrations & seed** (once per database):
@@ -68,14 +68,15 @@ npm run dev   # serves on http://localhost:3010
 
 ## Demo login (after seed)
 
-Set in `backend/.env` before running `python scripts/seed_timtimol.py`:
+## Demo seed (optional)
 
-```env
-SEED_DEMO_EMAIL=amadou@timtimol.sn
+```bash
+# In backend/.env — password only, never commit
 SEED_DEMO_PASSWORD=your_local_demo_password
+python scripts/seed_timtimol.py
 ```
 
-Use those credentials to sign in locally. **Never commit passwords** — GitGuardian and git history may retain leaked secrets; rotate any password that was ever pushed.
+Login as `amadou@timtimol.sn` with that password after seed.
 
 ## Mobile (Capacitor)
 

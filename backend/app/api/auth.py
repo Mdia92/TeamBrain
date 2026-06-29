@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user, reset_rls_bootstrap
-from app.auth.invite_code import check_invite_code
+from app.auth.invite_code import check_invite_code, check_pilot_email, pilot_blocks_extra_orgs
 from app.auth.jwt import (
     create_access_token,
     create_refresh_token,
@@ -166,6 +166,10 @@ async def signup(
     valid, message = check_invite_code(code)
     if not valid:
         raise HTTPException(status.HTTP_403_FORBIDDEN, message)
+
+    email_ok, email_msg = check_pilot_email(body.email)
+    if not email_ok:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, email_msg)
 
     existing = (
         await session.execute(text("SELECT 1 FROM users WHERE email = :e").bindparams(e=body.email))
@@ -410,6 +414,11 @@ async def create_org_for_user(
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     """Logged-in user creates an additional organization (multi-org)."""
+    if pilot_blocks_extra_orgs():
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Création d'organisation supplémentaire désactivée pendant le pilote.",
+        )
     await reset_rls_bootstrap(session)
     org_id = uuid.uuid4()
     slug = _slugify(body.organization_name)
@@ -730,7 +739,7 @@ async def google_oauth_start() -> dict:
     params = urlencode(
         {
             "client_id": settings.google_oauth_client_id,
-            "redirect_uri": settings.google_oauth_redirect_uri,
+            "redirect_uri": settings.google_oauth_redirect,
             "response_type": "code",
             "scope": "openid email profile",
             "access_type": "offline",
@@ -757,7 +766,7 @@ async def google_oauth_callback(
                 "code": code,
                 "client_id": settings.google_oauth_client_id,
                 "client_secret": settings.google_oauth_client_secret,
-                "redirect_uri": settings.google_oauth_redirect_uri,
+                "redirect_uri": settings.google_oauth_redirect,
                 "grant_type": "authorization_code",
             },
         )

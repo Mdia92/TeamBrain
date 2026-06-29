@@ -38,7 +38,7 @@ cd backend
 cp .env.example .env   # fill DATABASE_URL, JWT_SECRET_KEY (see docs/local-dev.md)
 pip install -e ".[dev]"
 alembic upgrade head
-python scripts/seed_timtimol.py
+python scripts/seed_timtimol.py   # optional — set SEED_DEMO_PASSWORD in .env first
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
 ```
 
@@ -51,12 +51,12 @@ npm install
 npm run dev   # http://localhost:3010
 ```
 
-Demo login after seed: use `SEED_DEMO_EMAIL` / `SEED_DEMO_PASSWORD` from `backend/.env` (never commit passwords).
+**Pilot signup (production):** code `TIMTIMOL2026` + `@timtimol.sn` email only. See [docs/deploy.md](docs/deploy.md).
 
 ## Deploy
 
-- Backend: Railway (`backend/`, see `docs/deploy.md`)
-- Frontend: Vercel (`frontend/`)
+- Backend: Railway — set `CORS_ORIGINS`, `FRONTEND_URL`, `PILOT_*` (see `docs/deploy.md`)
+- Frontend: Vercel — set **`NEXT_PUBLIC_API_URL`** to your Railway API URL
 
 ## Batch 2 (June 2026)
 

@@ -3,6 +3,14 @@ import { isOnline, OfflineQueuedError, tryQueueOfflineWrite } from "@/app/lib/of
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8010";
 
+export function isApiMisconfiguredForBrowser(): boolean {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname;
+  const localSite = host === "localhost" || host === "127.0.0.1";
+  const localApi = BASE_URL.includes("localhost") || BASE_URL.includes("127.0.0.1");
+  return !localSite && localApi;
+}
+
 const REQUEST_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 120_000;
 const ASSISTANT_TIMEOUT_MS = 120_000;

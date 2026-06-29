@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { ApiRequestError, isApiMisconfiguredForBrowser } from "@/app/lib/api";
 import { validateInviteCode } from "@/app/lib/auth-api";
 
 type Props = {
@@ -12,20 +13,33 @@ export function InviteCodeForm({ onValidated, submitLabel = "Continuer" }: Props
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const misconfigured = isApiMisconfiguredForBrowser();
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (misconfigured) {
+      setError(
+        "Configuration API manquante — définissez NEXT_PUBLIC_API_URL sur Vercel (URL Railway).",
+      );
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const result = await validateInviteCode(code.trim());
       if (!result.valid) {
-        setError("Code d'invitation invalide");
+        setError(result.message || "Code d'invitation invalide");
         return;
       }
       onValidated(code.trim());
-    } catch {
-      setError("Code d'invitation invalide");
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 0) {
+        setError("Impossible de joindre l'API — vérifiez NEXT_PUBLIC_API_URL et CORS_ORIGINS.");
+      } else if (err instanceof ApiRequestError) {
+        setError(err.message);
+      } else {
+        setError("Code d'invitation invalide");
+      }
     } finally {
       setLoading(false);
     }
@@ -33,9 +47,14 @@ export function InviteCodeForm({ onValidated, submitLabel = "Continuer" }: Props
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {misconfigured && (
+        <p className="rounded-input border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          Le site ne pointe pas vers l&apos;API de production (NEXT_PUBLIC_API_URL).
+        </p>
+      )}
       <div>
         <label className="tb-label" htmlFor="invite_code">
-          Code d&apos;invitation
+          Code d&apos;invitation pilote
         </label>
         <input
           id="invite_code"
@@ -47,6 +66,9 @@ export function InviteCodeForm({ onValidated, submitLabel = "Continuer" }: Props
           placeholder="TIMTIMOL2026"
           className="tb-input"
         />
+        <p className="mt-1 text-xs text-slate-500">
+          Réservé à l&apos;équipe Timtimol — utilisez votre email @timtimol.sn pour créer le compte.
+        </p>
       </div>
       {error && <p className="text-sm text-rose-600">{error}</p>}
       <button type="submit" disabled={loading || !code.trim()} className="tb-btn-primary h-10 w-full">

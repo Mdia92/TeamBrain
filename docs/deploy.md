@@ -3,73 +3,61 @@
 ## Backend (Railway)
 
 - Root: `backend/`
-- Procfile: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- Required env: `DATABASE_URL`, `JWT_SECRET_KEY`, `CORS_ORIGINS`, `ENVIRONMENT=production`
-- Optional: `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, S3 and Twilio vars (see `backend/.env.example`)
+- Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
-Health check: `GET /api/health` → `{"status":"ok","service":"teambrain-api"}`
+### Required env (Railway)
+
+| Variable | Example |
+|----------|---------|
+| `DATABASE_URL` | Supabase session pooler URL |
+| `JWT_SECRET_KEY` | `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `ENVIRONMENT` | `production` |
+| `CORS_ORIGINS` | `https://your-app.vercel.app` |
+| `FRONTEND_URL` | `https://your-app.vercel.app` (also auto-added to CORS) |
+| `GEMINI_API_KEY` | Google AI Studio key |
+| `GROQ_API_KEY` | Groq key (fallback LLM) |
+
+### Pilot gate (Timtimol month — blocks public signup)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PILOT_INVITE_CODE` | `TIMTIMOL2026` | Shared team code on `/create` |
+| `PILOT_EMAIL_DOMAINS` | `timtimol.sn` | Only `@timtimol.sn` can register |
+| `PILOT_MODE` | `true` when `ENVIRONMENT=production` | Set `false` to disable domain gate |
+
+Team members invited by email (`/invite/{token}`) join without the pilot code.
+
+### Optional
+
+S3 (Supabase Storage keys), Twilio, PayDunya, `FIREBASE_SERVICE_ACCOUNT_JSON`, Google OAuth (login for existing accounts only — **not required**).
+
+Health: `GET /api/health` → `{"status":"ok"}`
 
 ## Frontend (Vercel)
 
 - Root: `frontend/`
-- Env: `NEXT_PUBLIC_API_URL` (production API URL)
-- Optional: `NEXT_PUBLIC_GOOGLE_MAPS_KEY` for field-report maps
+
+### Required env (Vercel)
+
+| Variable | Example |
+|----------|---------|
+| `NEXT_PUBLIC_API_URL` | `https://your-api.up.railway.app` |
+
+**Without this, invite code validation calls `localhost:8010` and fails on the live site.**
+
+Optional: `NEXT_PUBLIC_GOOGLE_MAPS_KEY`
 
 ## Database migrations
-
-Run after first deploy or schema changes:
 
 ```bash
 cd backend
 alembic upgrade head
-python scripts/seed_timtimol.py   # optional demo data (Timtimol AIS)
 ```
 
-## Event worker (APScheduler)
-
-The API starts **APScheduler** automatically on boot:
-
-| Job | Schedule |
-|-----|----------|
-| Overdue task alerts | Every 6 hours |
-| Commitment reminders | Daily 08:00 |
-| Field report gaps | Monday 07:00 |
-
-Manual trigger (admin): `POST /api/events/run-checks?weekly=true`
-
-Task status changes and meeting processing also trigger immediate org-scoped checks.
-
-## PostgreSQL RLS role setup
-
-After migrations, ensure the app DB user can assume `coord_app`:
-
-```sql
--- Created by migration 004_app_grants
-GRANT coord_app TO app_user;
-GRANT app_user TO postgres;  -- or your Railway/Supabase login role
-
--- Production: create a dedicated login role
-CREATE ROLE teambrain_login LOGIN PASSWORD 'your_secure_password';
-GRANT app_user TO teambrain_login;
--- Use teambrain_login in DATABASE_URL (not superuser postgres)
-```
-
-Enable pgvector (also run at API startup):
-
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-```
+Optional local demo data: `SEED_DEMO_PASSWORD=... python scripts/seed_timtimol.py` (never commit password).
 
 ## Local development
 
-TeamBrain uses ports **3010** (frontend) and **8010** (API) by default. See [local-dev.md](local-dev.md).
+Ports **3010** (UI) and **8010** (API). See [local-dev.md](local-dev.md).
 
-```bash
-# Terminal 1 — API
-cd backend && uvicorn app.main:app --reload --host 127.0.0.1 --port 8010
-
-# Terminal 2 — UI
-cd frontend && npm run dev
-```
-
-Demo login after seed: `SEED_DEMO_EMAIL` / `SEED_DEMO_PASSWORD` from `backend/.env` (never commit).
+Pilot gate is **off** in `ENVIRONMENT=development` — any email works with invite code for testing.

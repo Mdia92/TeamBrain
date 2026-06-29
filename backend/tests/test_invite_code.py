@@ -1,9 +1,10 @@
-"""Invite code gate for pilot signup."""
+"""Invite code + pilot email gate tests."""
 
 import secrets
 
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.main import app
 
 client = TestClient(app)
@@ -17,6 +18,12 @@ def test_validate_invite_code_valid():
     data = r.json()
     assert data["valid"] is True
     assert "valide" in data["message"].lower()
+
+
+def test_validate_invite_code_case_insensitive():
+    r = client.post("/api/auth/validate-invite-code?code=timtimol2026")
+    assert r.status_code == 200
+    assert r.json()["valid"] is True
 
 
 def test_validate_invite_code_invalid():
@@ -69,8 +76,42 @@ def test_signup_with_valid_code():
     assert r.json()["user"]["email"] == email
 
 
-def test_create_org_after_signup():
-    email = f"multi-{secrets.token_hex(4)}@example.sn"
+def test_signup_rejects_non_pilot_email_when_pilot_mode(monkeypatch):
+    monkeypatch.setattr(settings, "pilot_mode", True)
+    monkeypatch.setattr(settings, "environment", "production")
+    r = client.post(
+        f"/api/auth/signup?code={VALID_CODE}",
+        json={
+            "email": f"blocked-{secrets.token_hex(4)}@gmail.com",
+            "password": "TestPass123!",
+            "full_name": "Outsider",
+            "organization_name": "Bad Org",
+        },
+    )
+    assert r.status_code == 403
+    assert "timtimol" in r.json()["detail"].lower()
+
+
+def test_signup_allows_timtimol_email_when_pilot_mode(monkeypatch):
+    monkeypatch.setattr(settings, "pilot_mode", True)
+    monkeypatch.setattr(settings, "environment", "production")
+    email = f"pilot-{secrets.token_hex(4)}@timtimol.sn"
+    r = client.post(
+        f"/api/auth/signup?code={VALID_CODE}",
+        json={
+            "email": email,
+            "password": "TestPass123!",
+            "full_name": "Timtimol User",
+            "organization_name": "Timtimol Org",
+        },
+    )
+    assert r.status_code == 200
+
+
+def test_create_org_blocked_in_pilot_mode(monkeypatch):
+    monkeypatch.setattr(settings, "pilot_mode", True)
+    monkeypatch.setattr(settings, "environment", "production")
+    email = f"multi-{secrets.token_hex(4)}@timtimol.sn"
     r = client.post(
         f"/api/auth/signup?code={VALID_CODE}",
         json={
@@ -94,5 +135,4 @@ def test_create_org_after_signup():
             "invites": [],
         },
     )
-    assert r2.status_code == 200
-    assert r2.json()["user"]["org_slug"]
+    assert r2.status_code == 403
