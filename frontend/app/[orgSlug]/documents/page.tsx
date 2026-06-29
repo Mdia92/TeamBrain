@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Camera, ExternalLink, FileText, MapPin, MapPinned, Mic, Wifi, WifiOff } from "lucide-react";
-import { apiClient, ApiRequestError, OfflineQueuedError, uploadFile } from "@/app/lib/api";
+import { apiClient, ApiRequestError, downloadDocumentFile, OfflineQueuedError, uploadFile } from "@/app/lib/api";
 import { attachFieldReportPhoto } from "@/app/lib/camera";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { canCreateContent, canEditContent, memberApprovalHint } from "@/app/lib/permissions";
@@ -25,7 +25,8 @@ import { useGsapStagger } from "@/hooks/use-gsap-stagger";
 type Doc = {
   id: string;
   title: string;
-  file_url: string;
+  file_url?: string | null;
+  has_file?: boolean;
   ai_summary: string | null;
   doc_type: string;
   ocr_text?: string | null;
@@ -48,7 +49,8 @@ const ACCEPT_FILES =
 
 type UploadResult = {
   id: string;
-  file_url: string;
+  has_file?: boolean;
+  file_url?: string;
   doc_type: string;
   ai_summary: string | null;
 };
@@ -132,7 +134,7 @@ export default function DocumentsPage() {
       const newDoc: Doc = {
         id: created.id,
         title,
-        file_url: created.file_url,
+        has_file: created.has_file ?? true,
         ai_summary: created.ai_summary,
         doc_type: docType,
       };
@@ -442,16 +444,19 @@ export default function DocumentsPage() {
                 <p className="mt-1 whitespace-pre-wrap">{selected.ocr_text}</p>
               </div>
             )}
-            {selected.file_url && (
-              <a
-                href={selected.file_url}
-                target="_blank"
-                rel="noreferrer"
+            {(selected.file_url || selected.has_file) && (
+              <button
+                type="button"
+                onClick={() => {
+                  void downloadDocumentFile(selected.id, selected.title).catch((err) => {
+                    toast(err instanceof ApiRequestError ? err.message : t("uploadError"), "error");
+                  });
+                }}
                 className="tb-btn-secondary inline-flex gap-2"
               >
                 <ExternalLink className="h-4 w-4" />
-                Ouvrir le fichier
-              </a>
+                Télécharger le fichier
+              </button>
             )}
           </div>
         )}

@@ -18,6 +18,7 @@ from app.automation import run_automation_event
 from app.db.session import get_db
 from app.events.worker import trigger_on_meeting_processed
 from app.pagination import decode_cursor, paginate_response
+from app.services.module_findings import ingest_meeting_findings
 from app.storage.s3 import get_storage
 from app.trial import require_write_access
 from app.upload_limits import read_upload_bounded
@@ -224,6 +225,15 @@ async def upload_meeting(
                     content=summary_msg,
                 ),
             )
+
+    await ingest_meeting_findings(
+        session,
+        org_id=oid,
+        meeting_id=str(mid),
+        decisions=extraction.decisions,
+        commitments=[c.text for c in extraction.commitments],
+        action_items=extraction.action_items,
+    )
 
     await session.execute(
         text(

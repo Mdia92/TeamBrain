@@ -228,3 +228,30 @@ export async function uploadFile(
 }
 
 export { BASE_URL };
+
+export async function downloadDocumentFile(docId: string, filename?: string): Promise<void> {
+  const meta = await apiClient.get<{
+    url: string | null;
+    local?: boolean;
+    filename?: string;
+  }>(`/api/documents/${docId}/download`);
+  if (meta.url?.startsWith("http")) {
+    window.open(meta.url, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const token = authConfig?.getToken() ?? null;
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${BASE_URL}/api/documents/${docId}/file`, {
+    credentials: "include",
+    headers,
+  });
+  if (!res.ok) throw new ApiRequestError(res.status, await parseError(res));
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename || meta.filename || "document";
+  anchor.click();
+  URL.revokeObjectURL(objectUrl);
+}

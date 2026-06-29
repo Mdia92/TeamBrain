@@ -41,8 +41,8 @@ Applied in code (June 2026). Railway/Vercel still require correct env vars.
 - Run `alembic upgrade head` on deploy (`railway.toml` release command)
 - Use Supabase **session pooler** URL with `postgresql+asyncpg://`
 - Rotate `PILOT_INVITE_CODE` after pilot ends
-- Add `pip audit` to CI when convenient
-- Presigned download endpoint for documents (future hardening)
+- `pip audit` in CI (`.github/workflows/ci.yml`)
+- Presigned document download: `GET /api/documents/{id}/download` (S3 presigned URL or authenticated `/file` stream for local dev)
 
 ## Future feature (from product backlog)
 

@@ -143,7 +143,7 @@ function activityHref(orgSlug: string, item: ActivityItem) {
 
 function pendingLabel(action: PendingAction) {
   const p = action.payload;
-  if (action.action_type === "create_task") return `Créer la tâche « ${p.title ?? "Sans titre"} »`;
+  if (action.action_type === "create_task" || action.action_type === "task_suggestion") return `Créer la tâche « ${p.title ?? "Sans titre"} »`;
   if (action.action_type === "update_task_status") return `Mettre à jour une tâche`;
   if (action.action_type === "whatsapp_send") return `Envoyer un message WhatsApp`;
   return action.action_type;

@@ -16,6 +16,7 @@ from app.automation import run_automation_event
 from app.db.session import get_db
 from app.events.worker import trigger_on_task_change
 from app.pagination import decode_cursor, encode_cursor
+from app.services.module_findings import ingest_task_event
 from app.services.task_dependencies import dependency_would_cycle, unresolved_dependency_titles
 from app.trial import require_write_access
 
@@ -132,6 +133,13 @@ async def create_task(
         note=f"Tâche créée: {body.title}",
         source_module="tasks",
         source_id=str(tid),
+    )
+    await session.commit()
+    await ingest_task_event(
+        session,
+        org_id=str(user["organization_id"]),
+        task_id=str(tid),
+        summary=f"Tâche créée: {body.title}",
     )
     await session.commit()
     await run_automation_event(
@@ -325,6 +333,13 @@ async def update_task_status(
             source_id=task_id,
         )
 
+    await session.commit()
+    await ingest_task_event(
+        session,
+        org_id=org_id,
+        task_id=task_id,
+        summary=f"Statut tâche → {body.status}: {row['title']}",
+    )
     await session.commit()
     await trigger_on_task_change(session, org_id)
     return {"id": task_id, "status": body.status}

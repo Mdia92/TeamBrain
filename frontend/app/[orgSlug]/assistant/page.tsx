@@ -116,7 +116,7 @@ function AssistantPageContent() {
   }
 
   function suggestionLabel(a: PendingAction): string {
-    if (a.action_type === "create_task") {
+    if (a.action_type === "create_task" || a.action_type === "task_suggestion") {
       return `Je suggère de créer la tâche « ${String(a.payload?.title ?? "")} »`;
     }
     if (a.action_type === "whatsapp_send") {

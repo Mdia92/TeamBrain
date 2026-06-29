@@ -8,6 +8,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,8 +26,10 @@ from app.services.document_extract import (
     parse_tags_from_text,
 )
 from app.services.document_search import embed_document, search_documents_semantic
+from app.services.module_findings import ingest_document_findings
 from app.services.voice_notes import ingest_voice_note, read_upload_audio
 from app.storage.s3 import get_storage
+from app.storage.urls import storage_key_from_url
 from app.trial import require_write_access
 from app.upload_limits import read_upload_bounded
 from app.workers.transcription import is_audio_filename
@@ -257,6 +260,18 @@ async def upload_document(
     except Exception:
         pass
 
+    try:
+        # Documents Agent runs after summarize + embed (rule/LLM extraction → task suggestions)
+        await ingest_document_findings(
+            session,
+            org_id=oid,
+            document_id=str(doc_id),
+            title=title,
+            text_content=extracted,
+        )
+    except Exception:
+        pass
+
     await run_automation_event(
         session,
         org_id=oid,
@@ -270,7 +285,76 @@ async def upload_document(
         },
     )
 
-    return {"id": str(doc_id), "file_url": file_url, "doc_type": resolved_type, "ai_summary": summary}
+    return {"id": str(doc_id), "has_file": True, "doc_type": resolved_type, "ai_summary": summary}
+
+
+@router.get("/{doc_id}/download")
+async def download_document(
+    doc_id: str,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    row = (
+        await session.execute(
+            text(
+                "SELECT title, file_url, content_type FROM documents"
+                " WHERE id = CAST(:did AS uuid) AND organization_id = CAST(:oid AS uuid)"
+            ).bindparams(did=doc_id, oid=str(user["organization_id"])),
+        )
+    ).mappings().first()
+    if not row or not row.get("file_url"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Document introuvable")
+    parsed = storage_key_from_url(row["file_url"])
+    if not parsed:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Fichier introuvable")
+    bucket, key = parsed
+    if bucket != "local":
+        storage = get_storage()
+        url = await storage.presigned_url(key)
+        if url.startswith("http"):
+            return {
+                "url": url,
+                "filename": row["title"],
+                "expires_in": 3600,
+                "local": False,
+            }
+    return {
+        "url": None,
+        "filename": row["title"],
+        "local": True,
+    }
+
+
+@router.get("/{doc_id}/file")
+async def stream_document_file(
+    doc_id: str,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    row = (
+        await session.execute(
+            text(
+                "SELECT file_url, content_type FROM documents"
+                " WHERE id = CAST(:did AS uuid) AND organization_id = CAST(:oid AS uuid)"
+            ).bindparams(did=doc_id, oid=str(user["organization_id"])),
+        )
+    ).mappings().first()
+    if not row or not row.get("file_url"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Document introuvable")
+    parsed = storage_key_from_url(row["file_url"])
+    if not parsed:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Fichier introuvable")
+    _bucket, key = parsed
+    storage = get_storage()
+    data = await storage.download(key)
+    if not data:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Fichier non disponible")
+    filename = os.path.basename(key)
+    return StreamingResponse(
+        iter([data]),
+        media_type=row.get("content_type") or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/voice-note", status_code=status.HTTP_201_CREATED)

@@ -1,23 +1,35 @@
-# Module coordination — product backlog (not started)
+# Module coordination
 
-Source: product handoff in `fdbck.txt`. **Security work is separate** — see [security.md](security.md).
+Source: product handoff in `fdbck.txt`.
 
-## Goal
+## Implemented (2026-06)
 
-Wire modules through a shared `module_findings` layer so the assistant synthesizes cross-module context.
+| Piece | Status |
+|-------|--------|
+| `module_findings` table + RLS (migration `014`) | Done |
+| Document upload → Documents Agent (rules + dateparser + verify) | Done |
+| Meetings → commitments/decisions/action items | Done |
+| Tasks → `task_event` on create/status change | Done |
+| `GET /api/org/findings` + `GET /api/org/synthesis` | Done |
+| Assistant reads last 24h findings before each response | Done |
+| High-confidence deadlines → `task_suggestion` pending actions | Done |
+| Presigned document download (`GET /api/documents/{id}/download`) | Done |
 
-## Planned pieces
+## Schema
 
-1. **Documents** — on upload, extract entities → `module_findings`
-2. **Meetings** — commitments/decisions → `module_findings`
-3. **Tasks** — status events → `module_findings`
-4. **Assistant** — `GET /api/org/findings`, synthesis before each response
-5. **Admin** — pending task suggestions from findings → one-click approve
+`module_findings(organization_id, module, finding_type, content, confidence, source_id, created_at)`
 
-## Schema (draft)
+Finding types: `deadline`, `commitment`, `decision`, `action_item`, `task_event`, `entity`.
 
-`module_findings(org_id, module, finding_type, content, confidence, source_id, created_at)`
+## Service
 
-## Status
+`backend/app/agents/documents_agent.py` — perceive → reason → decide → execute → verify on upload.
 
-Not implemented. Signup/production pilot takes priority.
+`backend/app/services/module_findings.py` — write, list, synthesize, meeting/task ingest helpers.
+
+## Future
+
+- Non-superuser DB role for RLS enforcement in production (ops)
+- Dashboard synthesis widget (API ready at `/api/org/synthesis`)
+- MCP tool `module_findings_list` for on-demand assistant queries
+

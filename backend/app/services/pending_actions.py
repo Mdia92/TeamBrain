@@ -76,7 +76,7 @@ async def _execute_action(
     action_type: str,
     payload: dict[str, Any],
 ) -> str:
-    if action_type == "create_task":
+    if action_type in ("create_task", "task_suggestion"):
         tid = uuid.uuid4()
         pid = payload.get("project_id")
         if not pid:

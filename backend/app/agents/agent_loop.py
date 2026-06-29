@@ -14,6 +14,7 @@ from app.agents.memory_service import MemoryService
 from app.agents.personality import assistant_system_prompt, uncertainty_prefix
 from app.mcp.client import MCPClient
 from app.policy import PolicyService
+from app.services.module_findings import format_findings_for_context, list_findings
 from app.services.pending_actions import create_pending_action
 
 SIMILARITY_THRESHOLD = 0.6  # fallback when policy unavailable
@@ -136,7 +137,7 @@ async def _plan(question: str) -> AgentPlan:
 
 
 def _suggestion_label(action_type: str, payload: dict[str, Any]) -> str:
-    if action_type == "create_task":
+    if action_type in ("create_task", "task_suggestion"):
         return f"Créer la tâche « {payload.get('title', 'Sans titre')} »"
     if action_type == "whatsapp_send":
         who = payload.get("recipient_name", "destinataire")
@@ -192,6 +193,11 @@ async def run_agent(
     pending_suggestions: list[dict[str, Any]] = []
     strong_hits = 0
     has_structured_data = False
+    recent_findings = await list_findings(session, org_id, hours=24)
+    findings_block = format_findings_for_context(recent_findings)
+    if findings_block:
+        context_parts.append(findings_block)
+        has_structured_data = True
 
     for step in plan.steps:
         if step["action"] == "retrieve":

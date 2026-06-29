@@ -13,6 +13,8 @@ jobs:
           python-version: "3.11"
       - run: pip install -e ".[dev]"
       - run: ruff check app/
+      - run: pytest -q
+      - run: pip install pip-audit && pip-audit
   frontend:
     runs-on: ubuntu-latest
     defaults:

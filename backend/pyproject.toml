@@ -31,6 +31,7 @@ dependencies = [
     "openpyxl",
     "python-pptx",
     "pyyaml",
+    "dateparser",
 ]
 
 [project.optional-dependencies]

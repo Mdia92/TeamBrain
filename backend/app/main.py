@@ -23,6 +23,7 @@ from app.api import (
     memory,
     messages,
     notifications,
+    org_intel,
     organizations,
     pending_actions,
     projects,
@@ -83,6 +84,7 @@ app.include_router(invites.router)
 app.include_router(memory.router)
 app.include_router(notifications.router)
 app.include_router(pending_actions.router)
+app.include_router(org_intel.router)
 app.include_router(organizations.router)
 app.include_router(automations.router)
 app.include_router(billing.router)
