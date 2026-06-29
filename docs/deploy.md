@@ -112,4 +112,6 @@ Optional local demo data: `SEED_DEMO_PASSWORD=... python scripts/seed_timtimol.p
 
 Ports **3010** (UI) and **8010** (API). See [local-dev.md](local-dev.md).
 
+Production security checklist: [security.md](security.md).
+
 Pilot gate is **off** in `ENVIRONMENT=development` — any email works with invite code for testing.

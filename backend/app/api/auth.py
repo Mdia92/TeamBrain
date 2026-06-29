@@ -8,7 +8,7 @@ import uuid
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +34,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 REFRESH_COOKIE = "refresh_token"
 ACCESS_COOKIE = "tb_access"
+OAUTH_STATE_COOKIE = "tb_oauth_state"
 COOKIE_PATH = "/api/auth"
 
 
@@ -86,6 +87,11 @@ class SignupIn(BaseModel):
     industry: str = Field(default="other")
     team_size: str = Field(default="1-10")
     primary_language: str = Field(default="fr")
+    invite_code: str = Field(min_length=1)
+
+
+class InviteCodeIn(BaseModel):
+    code: str = Field(min_length=1)
 
 
 class LoginIn(BaseModel):
@@ -149,8 +155,9 @@ async def _load_user_session(session: AsyncSession, user_id: str, org_id: str) -
 
 
 @router.post("/validate-invite-code")
-async def validate_invite_code(code: str = Query(..., min_length=1)) -> dict:
-    valid, message = check_invite_code(code)
+@limiter.limit("10/minute")
+async def validate_invite_code(request: Request, body: InviteCodeIn) -> dict:
+    valid, message = check_invite_code(body.code)
     return {"valid": valid, "message": message}
 
 
@@ -160,10 +167,9 @@ async def signup(
     request: Request,
     response: Response,
     body: SignupIn,
-    code: str = Query(..., min_length=1),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    valid, message = check_invite_code(code)
+    valid, message = check_invite_code(body.invite_code)
     if not valid:
         raise HTTPException(status.HTTP_403_FORBIDDEN, message)
 
@@ -292,6 +298,7 @@ async def login(
 
 
 @router.post("/refresh")
+@limiter.limit("30/minute")
 async def refresh(
     request: Request, response: Response, session: AsyncSession = Depends(get_db)
 ) -> dict:
@@ -736,9 +743,19 @@ async def accept_invite_login(
 
 
 @router.get("/google")
-async def google_oauth_start() -> dict:
+async def google_oauth_start(response: Response) -> dict:
     if not settings.google_oauth_client_id:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Google OAuth non configuré")
+    state = secrets.token_urlsafe(32)
+    response.set_cookie(
+        OAUTH_STATE_COOKIE,
+        state,
+        max_age=600,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path=COOKIE_PATH,
+    )
     params = urlencode(
         {
             "client_id": settings.google_oauth_client_id,
@@ -747,6 +764,7 @@ async def google_oauth_start() -> dict:
             "scope": "openid email profile",
             "access_type": "offline",
             "prompt": "consent",
+            "state": state,
         }
     )
     return {"url": f"https://accounts.google.com/o/oauth2/v2/auth?{params}"}
@@ -755,12 +773,24 @@ async def google_oauth_start() -> dict:
 @router.get("/google/callback")
 async def google_oauth_callback(
     code: str,
-    response: Response,
     request: Request,
+    response: Response,
     session: AsyncSession = Depends(get_db),
+    state: str | None = None,
 ):
     if not settings.google_oauth_client_id or not settings.google_oauth_client_secret:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Google OAuth non configuré")
+
+    cookie_state = request.cookies.get(OAUTH_STATE_COOKIE)
+    if not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "État OAuth invalide — réessayez")
+    response.delete_cookie(
+        OAUTH_STATE_COOKIE,
+        path=COOKIE_PATH,
+        secure=settings.cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
 
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
@@ -784,6 +814,8 @@ async def google_oauth_callback(
 
     email = profile.get("email")
     google_sub = profile.get("sub")
+    if not profile.get("email_verified"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email Google non vérifié")
 
     row = (
         await session.execute(

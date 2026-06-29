@@ -38,13 +38,14 @@ from app.middleware.logging import RequestLoggingMiddleware, configure_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.rate_limit import limiter
 from app.scheduler import start_scheduler, stop_scheduler
-from app.startup import ensure_pgvector
+from app.startup import ensure_pgvector, validate_production_settings
 
 configure_logging()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_production_settings()
     await ensure_pgvector()
     start_scheduler()
     yield

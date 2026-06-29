@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # Pilot gate — invite code only (set PILOT_INVITE_CODE on Railway; never show in UI)
     pilot_mode: bool | None = None  # None → True when environment=production
-    pilot_invite_code: str = "2026timtimol"
+    pilot_invite_code: str = ""
     pilot_email_domains: str = ""  # empty = any email; comma-separated to restrict later
 
     # Optional Google OAuth (login only — no public signup via Google)

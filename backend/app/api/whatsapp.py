@@ -25,7 +25,10 @@ def _hash_phone(phone: str) -> str:
 
 def _validate_twilio(request: Request, params: dict[str, str]) -> None:
     if not settings.twilio_auth_token:
-        return
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Webhook WhatsApp non configuré",
+        )
     signature = request.headers.get("X-Twilio-Signature", "")
     url = str(request.url)
     validator = RequestValidator(settings.twilio_auth_token)

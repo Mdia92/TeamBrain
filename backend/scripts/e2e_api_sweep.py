@@ -7,8 +7,6 @@ import sys
 
 import httpx
 
-from app.config import settings
-
 BASE = "http://127.0.0.1:8010"
 
 
@@ -24,7 +22,7 @@ def main() -> int:
 
     email = f"test-{secrets.token_hex(4)}@example.sn"
     r = c.post(
-        "/api/auth/signup?code=2026timtimol",
+        "/api/auth/signup",
         json={
             "email": email,
             "password": "TestPass123!",
@@ -33,6 +31,7 @@ def main() -> int:
             "industry": "ngo",
             "team_size": "1-10",
             "primary_language": "fr",
+            "invite_code": "2026timtimol",
         },
     )
     if r.status_code != 200:
@@ -112,12 +111,13 @@ def main() -> int:
         errors.append(f"memory list: {rm.status_code}")
 
     rd = c.post(
-        "/api/auth/signup?code=2026timtimol",
+        "/api/auth/signup",
         json={
             "email": email,
             "password": "TestPass123!",
             "full_name": "Dup",
             "organization_name": "Dup Org",
+            "invite_code": "2026timtimol",
         },
     )
     if rd.status_code != 409:

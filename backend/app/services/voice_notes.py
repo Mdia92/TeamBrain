@@ -13,6 +13,7 @@ from app.agents.memory_service import MemoryService
 from app.automation import run_automation_event
 from app.services.document_search import embed_document
 from app.storage.s3 import get_storage
+from app.upload_limits import read_upload_bounded
 from app.workers.transcription import transcribe_audio
 
 
@@ -103,6 +104,6 @@ async def ingest_voice_note(
 
 
 async def read_upload_audio(audio: UploadFile) -> tuple[bytes, str, str | None]:
-    content = await audio.read()
+    content = await read_upload_bounded(audio)
     filename = audio.filename or "voice.webm"
     return content, filename, audio.content_type

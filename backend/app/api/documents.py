@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import date
 
@@ -27,6 +28,7 @@ from app.services.document_search import embed_document, search_documents_semant
 from app.services.voice_notes import ingest_voice_note, read_upload_audio
 from app.storage.s3 import get_storage
 from app.trial import require_write_access
+from app.upload_limits import read_upload_bounded
 from app.workers.transcription import is_audio_filename
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -175,8 +177,8 @@ async def upload_document(
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     doc_id = uuid.uuid4()
-    content = await file.read()
-    filename = file.filename or "document"
+    content = await read_upload_bounded(file)
+    filename = os.path.basename(file.filename or "document")
     fmt = detect_format(filename, file.content_type)
     oid = str(user["organization_id"])
 

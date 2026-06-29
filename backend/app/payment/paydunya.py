@@ -105,7 +105,7 @@ def verify_webhook(payload: dict[str, Any], signature: str | None) -> bool:
     if not is_merchant_configured():
         return False
     if not signature:
-        return settings.paydunya_mode == "sandbox"
+        return settings.environment != "production" and settings.paydunya_mode == "sandbox"
     body = json.dumps(payload, separators=(",", ":"), sort_keys=True)
     expected = hmac.new(
         settings.paydunya_master_key.encode(),

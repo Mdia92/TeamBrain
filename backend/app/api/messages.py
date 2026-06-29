@@ -23,6 +23,22 @@ from app.trial import require_write_access
 router = APIRouter(prefix="/api/messages", tags=["messages"])
 
 _subscribers: dict[str, list[asyncio.Queue]] = defaultdict(list)
+
+
+async def _assert_channel_in_org(
+    session: AsyncSession, channel_id: str, org_id: str
+) -> str:
+    row = (
+        await session.execute(
+            text(
+                "SELECT name FROM channels WHERE id = CAST(:cid AS uuid)"
+                " AND organization_id = CAST(:oid AS uuid)"
+            ).bindparams(cid=channel_id, oid=org_id),
+        )
+    ).first()
+    if not row:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Canal inaccessible")
+    return row[0]
 ADMIN_ROLES = frozenset({"owner", "admin"})
 
 
@@ -391,12 +407,7 @@ async def send_channel_message(
 ) -> dict:
     mid = uuid.uuid4()
     oid = str(user["organization_id"])
-    ch = (
-        await session.execute(
-            text("SELECT name FROM channels WHERE id = CAST(:cid AS uuid)").bindparams(cid=body.channel_id),
-        )
-    ).first()
-    channel_name = ch[0] if ch else "channel"
+    channel_name = await _assert_channel_in_org(session, body.channel_id, oid)
 
     await session.execute(
         text(
@@ -434,7 +445,12 @@ async def send_channel_message(
 
 
 @router.get("/stream/{channel_id}")
-async def message_stream(channel_id: str, user: dict = Depends(get_current_user)):
+async def message_stream(
+    channel_id: str,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    await _assert_channel_in_org(session, channel_id, str(user["organization_id"]))
     queue: asyncio.Queue = asyncio.Queue()
     _subscribers[channel_id].append(queue)
 
@@ -460,11 +476,13 @@ async def pin_message(
     user: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
+    oid = str(user["organization_id"])
+    await _assert_channel_in_org(session, channel_id, oid)
     await session.execute(
         text(
             "UPDATE messages SET is_pinned = true WHERE id = CAST(:mid AS uuid)"
-            " AND channel_id = CAST(:cid AS uuid)"
-        ).bindparams(mid=message_id, cid=channel_id),
+            " AND channel_id = CAST(:cid AS uuid) AND organization_id = CAST(:oid AS uuid)"
+        ).bindparams(mid=message_id, cid=channel_id, oid=oid),
     )
     await session.commit()
     return {"pinned": message_id}

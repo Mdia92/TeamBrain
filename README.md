@@ -6,7 +6,7 @@ Team coordination SaaS with agentic Team Brain — multi-tenant offline-first pl
 
 - `backend/` — FastAPI + PostgreSQL (RLS) + Alembic + Team Brain agents
 - `frontend/` — Next.js 14 PWA + Tailwind
-- `docs/` — Architecture, deploy, local dev, [Batch 2 plan](batch-2-plan.md)
+- `docs/` — Architecture, deploy, [security](docs/security.md), local dev
 
 ## Local dev ports
 

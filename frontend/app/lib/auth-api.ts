@@ -5,7 +5,7 @@ export function login(email: string, password: string): Promise<LoginResponse> {
 }
 
 export function validateInviteCode(code: string): Promise<{ valid: boolean; message: string }> {
-  return apiClient.post(`/api/auth/validate-invite-code?code=${encodeURIComponent(code)}`);
+  return apiClient.post("/api/auth/validate-invite-code", { code });
 }
 
 export function signup(
@@ -20,7 +20,7 @@ export function signup(
   },
   inviteCode: string,
 ): Promise<LoginResponse> {
-  return apiClient.post(`/api/auth/signup?code=${encodeURIComponent(inviteCode)}`, data);
+  return apiClient.post("/api/auth/signup", { ...data, invite_code: inviteCode });
 }
 
 export async function refresh(): Promise<{ access_token: string } | null> {

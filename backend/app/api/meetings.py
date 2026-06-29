@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import UTC, datetime
 
@@ -19,6 +20,7 @@ from app.events.worker import trigger_on_meeting_processed
 from app.pagination import decode_cursor, paginate_response
 from app.storage.s3 import get_storage
 from app.trial import require_write_access
+from app.upload_limits import read_upload_bounded
 from app.workers.transcription import transcribe_audio
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
@@ -61,9 +63,10 @@ async def upload_meeting(
 ) -> dict:
     mid = uuid.uuid4()
     oid = str(user["organization_id"])
-    audio_bytes = await audio.read()
+    audio_bytes = await read_upload_bounded(audio)
+    safe_name = os.path.basename(audio.filename or "audio.webm")
     storage = get_storage()
-    key = f"{oid}/meetings/{mid}/{audio.filename}"
+    key = f"{oid}/meetings/{mid}/{safe_name}"
     audio_url = await storage.upload(key, audio_bytes, audio.content_type)
 
     await session.execute(

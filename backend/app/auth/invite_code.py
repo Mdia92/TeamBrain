@@ -6,7 +6,12 @@ from app.config import settings
 
 
 def _expected_code() -> str:
-    return (settings.pilot_invite_code or "2026timtimol").strip()
+    code = (settings.pilot_invite_code or "").strip()
+    if code:
+        return code
+    if settings.environment == "development":
+        return "2026timtimol"
+    return ""
 
 
 def check_invite_code(code: str | None) -> tuple[bool, str]:
