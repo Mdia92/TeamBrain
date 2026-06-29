@@ -128,7 +128,7 @@ function ProjectDetailContent() {
             <span className="font-medium capitalize">{project.status}</span>
           </p>
           <Link href={`/${orgSlug}/tasks?project=${projectId}`} className="tb-btn-primary inline-flex h-10">
-            Voir le kanban →
+            Voir les tâches →
           </Link>
         </div>
       )}

@@ -24,7 +24,7 @@ import { cn } from "@/app/lib/utils";
 import { initials } from "@/components/ui/avatar";
 import { TbCard } from "@/components/ui/tb-card";
 
-export type KanbanTask = {
+export type BoardTask = {
   id: string;
   title: string;
   priority?: string;
@@ -54,7 +54,7 @@ function isOverdue(due?: string): boolean {
   return new Date(due) < new Date(new Date().toDateString());
 }
 
-function TaskProvenance({ task, orgSlug }: { task: KanbanTask; orgSlug?: string }) {
+function TaskProvenance({ task, orgSlug }: { task: BoardTask; orgSlug?: string }) {
   if (task.source === "meeting_ai") {
     return (
       <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-primary dark:bg-indigo-950">
@@ -87,7 +87,7 @@ function TaskCard({
   onClick,
   draggable,
 }: {
-  task: KanbanTask;
+  task: BoardTask;
   orgSlug?: string;
   onClick?: () => void;
   draggable?: boolean;
@@ -142,10 +142,10 @@ function SortableTask({
   canDrag,
   onTaskClick,
 }: {
-  task: KanbanTask;
+  task: BoardTask;
   orgSlug?: string;
   canDrag: boolean;
-  onTaskClick?: (task: KanbanTask) => void;
+  onTaskClick?: (task: BoardTask) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -227,7 +227,7 @@ function QuickAdd({
   );
 }
 
-export function KanbanBoard({
+export function TaskBoard({
   tasks,
   orgSlug,
   onStatusChange,
@@ -236,12 +236,12 @@ export function KanbanBoard({
   onTaskClick,
   canQuickAdd = true,
 }: {
-  tasks: KanbanTask[];
+  tasks: BoardTask[];
   orgSlug?: string;
   onStatusChange: (taskId: string, status: string) => void;
   onTaskCreated?: () => void;
   canDrag?: boolean;
-  onTaskClick?: (task: KanbanTask) => void;
+  onTaskClick?: (task: BoardTask) => void;
   canQuickAdd?: boolean;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -263,10 +263,7 @@ export function KanbanBoard({
   };
 
   async function quickAdd(title: string, status: string) {
-    const projectRes = await apiClient.get<{ items: { id: string }[] }>("/api/projects?limit=1");
-    const projectId = projectRes.items[0]?.id;
-    if (!projectId) throw new Error("Créez d'abord un projet");
-    await apiClient.post("/api/tasks", { project_id: projectId, title, status });
+    await apiClient.post("/api/tasks", { title, status });
     onTaskCreated?.();
   }
 

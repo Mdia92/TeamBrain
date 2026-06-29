@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.llm_client import generate_text
 from app.agents.memory_service import MemoryService
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_role
 from app.automation import run_automation_event
 from app.db.session import get_db
 from app.pagination import cursor_clause, paginate_response
@@ -375,6 +375,35 @@ async def upload_voice_note(
         title=title,
         project_id=project_id,
     )
+
+
+@router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(
+    doc_id: str,
+    user: dict = Depends(require_role("owner", "admin", "manager")),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    oid = str(user["organization_id"])
+    result = await session.execute(
+        text(
+            "DELETE FROM documents WHERE id = CAST(:did AS uuid) AND organization_id = CAST(:oid AS uuid)"
+            " RETURNING title"
+        ).bindparams(did=doc_id, oid=oid),
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Document introuvable")
+    brain = MemoryService(session)
+    await brain.write_memory(
+        org_id=oid,
+        type="episodic",
+        entity_type="document",
+        entity_id=doc_id,
+        note=f"Document supprimé: {row[0]}",
+        source_module="documents",
+        source_id=doc_id,
+    )
+    await session.commit()
 
 
 @router.post("/{doc_id}/summarize")

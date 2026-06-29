@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { CardSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { TbCard } from "@/components/ui/tb-card";
+import { useTranslation } from "@/app/lib/use-locale";
 import { useGsapStagger } from "@/hooks/use-gsap-stagger";
 
 type MemoryItem = {
@@ -51,8 +52,10 @@ export default function MemoryPage() {
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
 
-  useEffect(() => {
-    Promise.all([
+  const { t } = useTranslation();
+
+  const refreshMemory = useCallback(() => {
+    return Promise.all([
       apiClient.get<{ items: MemoryItem[] }>("/api/memory"),
       apiClient.get<{ items: Pattern[] }>("/api/memory/patterns"),
     ])
@@ -60,9 +63,16 @@ export default function MemoryPage() {
         setTimeline(tl.items);
         setPatterns(pat.items);
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch(console.error);
   }, []);
+
+  useEffect(() => {
+    void refreshMemory().finally(() => setLoading(false));
+    const timer = setInterval(() => {
+      if (!query.trim()) void refreshMemory();
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [query, refreshMemory]);
 
   const runSearch = useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -122,8 +132,8 @@ export default function MemoryPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Mémoire organisationnelle"
-        description="Ce que TeamBrain sait de votre organisation — chronologie et motifs."
+        title={t("memoryTitle")}
+        description={t("memoryDescription")}
       />
 
       <div className="relative">

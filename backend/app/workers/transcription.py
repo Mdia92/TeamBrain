@@ -29,20 +29,25 @@ def is_audio_filename(filename: str, content_type: str | None = None) -> bool:
 
 
 def _mime_type(filename: str, content_type: str | None) -> str:
+    lower = (filename or "").lower()
+    if lower.endswith(".wav"):
+        return "audio/wav"
     if content_type and (content_type.startswith("audio/") or content_type == "video/mp4"):
-        return content_type.split(";")[0].strip()
+        ct = content_type.split(";")[0].strip()
+        if ct == "audio/x-wav":
+            return "audio/wav"
+        return ct
     guessed, _ = mimetypes.guess_type(filename)
     if guessed:
+        if guessed == "audio/x-wav":
+            return "audio/wav"
         return guessed
-    lower = filename.lower()
     if lower.endswith(".m4a"):
         return "audio/mp4"
     if lower.endswith(".mp3"):
         return "audio/mpeg"
     if lower.endswith(".ogg"):
         return "audio/ogg"
-    if lower.endswith(".wav"):
-        return "audio/wav"
     return "audio/webm"
 
 

@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { CardSkeleton } from "@/components/ui/skeleton";
 import { TbCard } from "@/components/ui/tb-card";
 import { DetailDrawer } from "@/components/ui/detail-drawer";
+import { DeleteResourceButton } from "@/components/delete-resource-button";
 import { useGsapStagger } from "@/hooks/use-gsap-stagger";
 
 type Project = {
@@ -198,6 +199,16 @@ export default function ProjectsPage() {
               <button type="button" onClick={() => void markDone(selected)} className="tb-btn-secondary mt-2 w-full">
                 Marquer comme terminé
               </button>
+            )}
+            {canEdit && (
+              <DeleteResourceButton
+                path={`/api/projects/${selected.id}`}
+                label={selected.name}
+                onDeleted={() => {
+                  setSelected(null);
+                  void load();
+                }}
+              />
             )}
             {!canEdit && (
               <p className="text-xs text-amber-700 dark:text-amber-400">{memberApprovalHint()}</p>

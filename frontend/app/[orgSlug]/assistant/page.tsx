@@ -11,7 +11,7 @@ import { cn } from "@/app/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AssistantAvatar, AssistantLabel } from "@/components/assistant/assistant-avatar";
-import { VoiceNoteCapture } from "@/components/voice-note-capture";
+import { drainAskAiQueue } from "@/components/ask-ai-popup";
 
 type PendingSuggestion = {
   id: string;
@@ -84,14 +84,6 @@ function AssistantPageContent() {
   const prefilled = useRef(false);
 
   useEffect(() => {
-    const q = searchParams.get("q");
-    if (q && !prefilled.current) {
-      prefilled.current = true;
-      setQuestion(q);
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
@@ -158,6 +150,19 @@ function AssistantPageContent() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (prefilled.current) return;
+    const q = searchParams.get("q");
+    const queued = drainAskAiQueue().filter((item) => item && item !== q);
+    const toAsk = q ? [q, ...queued] : queued;
+    if (!toAsk.length) return;
+    prefilled.current = true;
+    if (q) setQuestion(q);
+    for (const item of toAsk) {
+      void ask(item);
+    }
+  }, [searchParams]);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();

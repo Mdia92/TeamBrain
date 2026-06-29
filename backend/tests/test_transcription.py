@@ -23,3 +23,4 @@ def test_detect_format_audio():
 def test_mime_type_mapping():
     assert _mime_type("x.m4a", None) == "audio/mp4"
     assert _mime_type("x.wav", None) == "audio/wav"
+    assert _mime_type("x.wav", "audio/x-wav") == "audio/wav"

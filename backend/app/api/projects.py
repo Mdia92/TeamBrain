@@ -239,3 +239,31 @@ async def update_project(
     )
     await session.commit()
     return {"id": project_id, "status": "updated"}
+
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project(
+    project_id: str,
+    user: dict = Depends(require_role("owner", "admin", "manager")),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    org_id = str(user["organization_id"])
+    result = await session.execute(
+        text(
+            "DELETE FROM projects WHERE id = CAST(:pid AS uuid) AND organization_id = CAST(:oid AS uuid)"
+            " RETURNING id"
+        ).bindparams(pid=project_id, oid=org_id),
+    )
+    if not result.first():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Projet introuvable")
+    brain = MemoryService(session)
+    await brain.write_memory(
+        org_id=org_id,
+        type="episodic",
+        entity_type="project",
+        entity_id=project_id,
+        note=f"Projet supprimé: {project_id}",
+        source_module="projects",
+        source_id=project_id,
+    )
+    await session.commit()

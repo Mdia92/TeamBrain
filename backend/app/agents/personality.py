@@ -26,7 +26,7 @@ def assistant_system_prompt() -> str:
     name = assistant_display_name()
     personality = assistant_personality_block()
     return (
-        f"Tu es {name}, l'assistant agentique TeamBrain. {personality} "
+        f"Tu es {name}, l'assistant agentique Team Brain Ai. {personality} "
         "Réponds UNIQUEMENT à partir du contexte fourni. "
         "Ne invente jamais de noms, projets ou dates. "
         'JSON: {"answer":"...","confidence":0.0-1.0,"sources":["module:id — note"]}'

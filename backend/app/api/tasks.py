@@ -1,4 +1,4 @@
-"""Tasks API — Kanban and list views."""
+"""Tasks API — list and task board views."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ MANAGER_ROLES = frozenset({"owner", "admin", "manager"})
 
 
 class TaskIn(BaseModel):
-    project_id: str
+    project_id: str | None = None
     title: str = Field(min_length=1)
     description: str | None = None
     assignee_id: str | None = None
@@ -371,3 +371,31 @@ async def update_task(
     )
     await session.commit()
     return {"id": task_id, "status": "updated"}
+
+
+@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_task(
+    task_id: str,
+    user: dict = Depends(require_role("owner", "admin", "manager")),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    org_id = str(user["organization_id"])
+    result = await session.execute(
+        text(
+            "DELETE FROM tasks WHERE id = CAST(:tid AS uuid) AND organization_id = CAST(:oid AS uuid)"
+            " RETURNING id"
+        ).bindparams(tid=task_id, oid=org_id),
+    )
+    if not result.first():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tâche introuvable")
+    brain = MemoryService(session)
+    await brain.write_memory(
+        org_id=org_id,
+        type="episodic",
+        entity_type="task",
+        entity_id=task_id,
+        note=f"Tâche supprimée: {task_id}",
+        source_module="tasks",
+        source_id=task_id,
+    )
+    await session.commit()

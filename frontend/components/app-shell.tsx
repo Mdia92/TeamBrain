@@ -35,6 +35,8 @@ import { cn } from "@/app/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { PageHeader, type BreadcrumbItem } from "@/components/ui/page-header";
 import { AppFooter } from "@/components/marketing-shell";
+import { AskAiPopup } from "@/components/ask-ai-popup";
+import { LocaleThemeBar } from "@/components/locale-theme-bar";
 
 type NavItem = {
   href: string;
@@ -51,7 +53,7 @@ function buildNavGroups(t: (key: import("@/app/lib/i18n").I18nKey) => string) {
       items: [
         { href: "dashboard", label: t("dashboard"), icon: LayoutDashboard, module: null },
         { href: "projects", label: t("projects"), icon: FolderKanban, module: "projects" },
-        { href: "tasks", label: t("tasks"), icon: CheckSquare, module: "projects" },
+        { href: "tasks", label: t("tasks"), icon: CheckSquare, module: null },
         { href: "documents", label: t("documents"), icon: FileText, module: "documents" },
         { href: "calendar", label: t("calendar"), icon: Calendar, module: "calendar" },
         { href: "daily-status", label: t("dailyStatus"), icon: ClipboardList, module: null },
@@ -448,6 +450,7 @@ export function AppShell({
             >
               <Bell className="h-5 w-5" />
             </button>
+            <LocaleThemeBar className="hidden sm:flex" />
             <UserMenu onLogout={() => void logout()} />
           </header>
 
@@ -520,6 +523,7 @@ export function AppShell({
           )}
         </div>
       </div>
+      <AskAiPopup orgSlug={orgSlug} />
     </div>
   );
 }

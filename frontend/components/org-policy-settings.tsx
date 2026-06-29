@@ -69,7 +69,7 @@ const FIELDS: PolicyField[] = [
   {
     key: "assistant_confidence_min",
     label: "Confiance assistant (mémoire)",
-    help: "Seuil minimal de pertinence mémoire pour qu'une source compte dans une réponse Xam.",
+    help: "Seuil minimal de pertinence mémoire pour qu'une source compte dans une réponse Ask AI.",
     min: 0.1,
     max: 1,
     step: 0.05,
@@ -142,7 +142,7 @@ export function OrgPolicySettings() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-slate-500">
-        Règles organisationnelles — valeurs par défaut TeamBrain, personnalisables par votre organisation.{" "}
+        Règles organisationnelles — valeurs par défaut Team Brain Ai, personnalisables par votre organisation.{" "}
         {t("assistantPolicyJobs")}
       </p>
       {error && <p className="text-sm text-rose-600">{error}</p>}

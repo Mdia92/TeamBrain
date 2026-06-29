@@ -88,8 +88,6 @@ async def _execute_action(
                 )
             ).first()
             pid = str(row[0]) if row else None
-        if not pid:
-            raise ValueError("Aucun projet disponible")
         await session.execute(
             text(
                 "INSERT INTO tasks (id, organization_id, project_id, title, status, source, created_by)"

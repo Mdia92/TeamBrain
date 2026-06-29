@@ -33,15 +33,18 @@ export function canCreateContent(user: User | null | undefined): boolean {
   return !isReadOnly(user);
 }
 
-/** Edit, drag Kanban, delete, upload meetings — managers and admins. */
+/** Edit, drag task board, delete, upload meetings — managers and admins. */
 export function canEditContent(user: User | null | undefined): boolean {
   return !isReadOnly(user) && isManagerOrAbove(user);
 }
 
-/** Kanban drag-and-drop status changes. */
-export function canDragKanban(user: User | null | undefined): boolean {
+/** Task drag-and-drop status changes. */
+export function canDragTasks(user: User | null | undefined): boolean {
   return canEditContent(user);
 }
+
+/** @deprecated Use canDragTasks */
+export const canDragKanban = canDragTasks;
 
 /** Create projects — managers and admins only. */
 export function canCreateProject(user: User | null | undefined): boolean {

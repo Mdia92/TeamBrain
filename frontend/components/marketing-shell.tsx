@@ -7,7 +7,7 @@ export function TeamBrainLogo({ className = "" }: { className?: string }) {
         TB
       </span>
       <span className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-        TeamBrain
+        Team Brain Ai
       </span>
     </Link>
   );

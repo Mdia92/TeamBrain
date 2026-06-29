@@ -25,6 +25,7 @@ from app.auth.jwt import (
 from app.auth.membership import create_membership, get_role_for_org, list_user_orgs
 from app.auth.passwords import hash_password, verify_password
 from app.config import settings
+from app.db.sql_compat import is_sqlite, settings_column, trial_ends_sql
 from app.db.session import get_db
 from app.rate_limit import limiter
 from app.services.industry_presets import ALL_MODULES, build_org_settings, preset_for_industry
@@ -202,41 +203,79 @@ async def signup(
 
     await bootstrap_signup_rls(session, org_id=str(org_id), user_id=str(user_id))
 
-    await session.execute(
-        text(
-            "INSERT INTO organizations (id, name, slug, plan, settings, language, owner_id,"
-            " pricing_tier, trial_ends_at)"
-            " VALUES (CAST(:oid AS uuid), :name, :slug, 'free', CAST(:settings AS jsonb), :lang,"
-            " CAST(:uid AS uuid), 'free_trial', now() + INTERVAL '30 days')"
-        ).bindparams(
-            oid=str(org_id),
-            name=body.organization_name,
-            slug=slug,
-            settings=json.dumps(settings_json),
-            lang=lang,
-            uid=str(user_id),
-        ),
-    )
-    await session.execute(
-        text(
-            "INSERT INTO users (id, organization_id, full_name, email, role, password_hash,"
-            " onboarding_completed) VALUES (CAST(:uid AS uuid), CAST(:oid AS uuid), :name, :email,"
-            " 'owner', :ph, false)"
-        ).bindparams(
-            uid=str(user_id),
-            oid=str(org_id),
-            name=body.full_name,
-            email=body.email,
-            ph=hash_password(body.password),
-        ),
-    )
+    if is_sqlite():
+        await session.execute(
+            text(
+                f"INSERT INTO organizations (id, name, slug, plan, settings, language, owner_id,"
+                f" pricing_tier, trial_ends_at)"
+                f" VALUES (:oid, :name, :slug, 'free', {settings_column()}, :lang,"
+                f" :uid, 'free_trial', {trial_ends_sql()})"
+            ).bindparams(
+                oid=str(org_id),
+                name=body.organization_name,
+                slug=slug,
+                settings=json.dumps(settings_json),
+                lang=lang,
+                uid=str(user_id),
+            ),
+        )
+        await session.execute(
+            text(
+                "INSERT INTO users (id, organization_id, full_name, email, role, password_hash,"
+                " onboarding_completed) VALUES (:uid, :oid, :name, :email, 'owner', :ph, 0)"
+            ).bindparams(
+                uid=str(user_id),
+                oid=str(org_id),
+                name=body.full_name,
+                email=body.email,
+                ph=hash_password(body.password),
+            ),
+        )
+    else:
+        await session.execute(
+            text(
+                "INSERT INTO organizations (id, name, slug, plan, settings, language, owner_id,"
+                " pricing_tier, trial_ends_at)"
+                " VALUES (CAST(:oid AS uuid), :name, :slug, 'free', CAST(:settings AS jsonb), :lang,"
+                " CAST(:uid AS uuid), 'free_trial', now() + INTERVAL '30 days')"
+            ).bindparams(
+                oid=str(org_id),
+                name=body.organization_name,
+                slug=slug,
+                settings=json.dumps(settings_json),
+                lang=lang,
+                uid=str(user_id),
+            ),
+        )
+        await session.execute(
+            text(
+                "INSERT INTO users (id, organization_id, full_name, email, role, password_hash,"
+                " onboarding_completed) VALUES (CAST(:uid AS uuid), CAST(:oid AS uuid), :name, :email,"
+                " 'owner', :ph, false)"
+            ).bindparams(
+                uid=str(user_id),
+                oid=str(org_id),
+                name=body.full_name,
+                email=body.email,
+                ph=hash_password(body.password),
+            ),
+        )
     await create_membership(session, user_id=str(user_id), org_id=str(org_id), role="owner")
-    await session.execute(
-        text(
-            "INSERT INTO channels (id, organization_id, name, is_direct, created_by)"
-            " VALUES (gen_random_uuid(), CAST(:oid AS uuid), 'general', false, CAST(:uid AS uuid))"
-        ).bindparams(oid=str(org_id), uid=str(user_id)),
-    )
+    channel_id = str(uuid.uuid4())
+    if is_sqlite():
+        await session.execute(
+            text(
+                "INSERT INTO channels (id, organization_id, name, is_direct, created_by)"
+                " VALUES (:cid, :oid, 'general', 0, :uid)"
+            ).bindparams(cid=channel_id, oid=str(org_id), uid=str(user_id)),
+        )
+    else:
+        await session.execute(
+            text(
+                "INSERT INTO channels (id, organization_id, name, is_direct, created_by)"
+                " VALUES (gen_random_uuid(), CAST(:oid AS uuid), 'general', false, CAST(:uid AS uuid))"
+            ).bindparams(oid=str(org_id), uid=str(user_id)),
+        )
     await session.commit()
 
     access = create_access_token(user_id, org_id, "owner")

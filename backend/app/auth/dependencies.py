@@ -10,12 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import decode_token
 from app.auth.membership import get_membership
 from app.config import settings
+from app.db.sql_compat import is_sqlite
 from app.db.session import get_db
 
 _bearer = HTTPBearer(auto_error=False)
 
 
 async def _set_rls_context(session: AsyncSession, user_id: str, org_id: str) -> None:
+    if is_sqlite():
+        return
     await session.execute(text(f"SET LOCAL ROLE {settings.app_db_role}"))
     await session.execute(
         text("SELECT set_config('app.current_user_id', :uid, true)").bindparams(uid=user_id),
@@ -27,6 +30,8 @@ async def _set_rls_context(session: AsyncSession, user_id: str, org_id: str) -> 
 
 async def reset_rls_bootstrap(session: AsyncSession) -> None:
     """Drop coord_app context so bootstrap writes (new org) bypass tenant RLS."""
+    if is_sqlite():
+        return
     await session.execute(text("RESET ROLE"))
     await session.execute(text("SELECT set_config('app.current_user_id', '', true)"))
     await session.execute(text("SELECT set_config('app.current_org_id', '', true)"))
@@ -34,6 +39,8 @@ async def reset_rls_bootstrap(session: AsyncSession) -> None:
 
 async def bootstrap_signup_rls(session: AsyncSession, *, org_id: str, user_id: str) -> None:
     """Prime RLS session vars so coord_app policies allow new org + owner inserts."""
+    if is_sqlite():
+        return
     await reset_rls_bootstrap(session)
     await session.execute(text(f"SET LOCAL ROLE {settings.app_db_role}"))
     await session.execute(
@@ -58,18 +65,29 @@ async def get_current_user(
     if not user_id or not org_id:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Jeton invalide")
 
-    await session.execute(
-        text("SELECT set_config('app.current_user_id', :uid, true)").bindparams(uid=user_id),
-    )
-
-    row = (
+    if not is_sqlite():
         await session.execute(
-            text(
-                "SELECT id, organization_id, full_name, email, onboarding_completed"
-                " FROM users WHERE id = CAST(:id AS uuid) AND is_active = true"
-            ).bindparams(id=user_id),
+            text("SELECT set_config('app.current_user_id', :uid, true)").bindparams(uid=user_id),
         )
-    ).mappings().first()
+
+    if is_sqlite():
+        row = (
+            await session.execute(
+                text(
+                    "SELECT id, organization_id, full_name, email, onboarding_completed"
+                    " FROM users WHERE id = :id AND is_active = 1"
+                ).bindparams(id=user_id),
+            )
+        ).mappings().first()
+    else:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT id, organization_id, full_name, email, onboarding_completed"
+                    " FROM users WHERE id = CAST(:id AS uuid) AND is_active = true"
+                ).bindparams(id=user_id),
+            )
+        ).mappings().first()
     if row is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Utilisateur introuvable")
 

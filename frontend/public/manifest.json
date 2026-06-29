@@ -1,7 +1,7 @@
 {
-  "name": "TeamBrain",
-  "short_name": "TeamBrain",
-  "description": "Plateforme TeamBrain pour organisations terrain",
+  "name": "Team Brain Ai",
+  "short_name": "Team Brain Ai",
+  "description": "Plateforme Team Brain Ai pour organisations terrain",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fafaf9",
