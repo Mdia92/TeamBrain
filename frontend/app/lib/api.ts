@@ -1,7 +1,18 @@
 import { isOnline, OfflineQueuedError, tryQueueOfflineWrite } from "@/app/lib/offline-sync";
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8010";
+/** Ensure API base is absolute — bare hostnames become https:// (common Vercel misconfig). */
+export function normalizeApiBaseUrl(raw: string | undefined): string {
+  const fallback = "http://localhost:8010";
+  const trimmed = raw?.trim();
+  if (!trimmed) return fallback;
+  const withoutTrailingSlash = trimmed.replace(/\/$/, "");
+  if (/^https?:\/\//i.test(withoutTrailingSlash)) {
+    return withoutTrailingSlash;
+  }
+  return `https://${withoutTrailingSlash}`;
+}
+
+const BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL);
 
 export function isApiMisconfiguredForBrowser(): boolean {
   if (typeof window === "undefined") return false;

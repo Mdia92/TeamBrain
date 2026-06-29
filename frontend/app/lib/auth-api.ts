@@ -1,4 +1,4 @@
-import { apiClient, type LoginResponse, type User } from "./api";
+import { apiClient, BASE_URL, type LoginResponse, type User } from "./api";
 
 export function login(email: string, password: string): Promise<LoginResponse> {
   return apiClient.post("/api/auth/login", { email, password });
@@ -37,7 +37,7 @@ export function logout(): Promise<{ status: string }> {
 
 export function me(token?: string): Promise<User> {
   if (token) {
-    return fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010"}/api/auth/me`, {
+    return fetch(`${BASE_URL}/api/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
       credentials: "include",
     }).then((r) => r.json());

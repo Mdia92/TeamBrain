@@ -42,9 +42,12 @@ Health: `GET /api/health` → `{"status":"ok"}`
 
 | Variable | Example |
 |----------|---------|
-| `NEXT_PUBLIC_API_URL` | `https://your-api.up.railway.app` |
+| `NEXT_PUBLIC_API_URL` | `https://your-api.up.railway.app` (must include `https://`) |
 
-**Without this, invite code validation calls `localhost:8010` and fails on the live site.**
+**Common mistake:** `teambrain-production.up.railway.app` without `https://` makes the browser call  
+`https://your-app.vercel.app/teambrain-production.up.railway.app/...` → 404.
+
+**Without a valid API URL, invite code validation fails on the live site.**
 
 Optional: `NEXT_PUBLIC_GOOGLE_MAPS_KEY`
 
