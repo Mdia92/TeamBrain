@@ -265,6 +265,10 @@ const fr = {
   settingsMembersActive: "Membres actifs",
   settingsMembersHint:
     "Comptes ayant accepté l'invitation. Les invitations en attente sont listées ci-dessous.",
+  settingsDeleteMember: "Retirer",
+  settingsDeleteMemberConfirm:
+    "Retirer {name} de l'équipe ? Son compte sera supprimé s'il n'appartient à aucune autre organisation.",
+  settingsMemberRemoved: "Membre retiré",
   settingsPendingInvites: "Invitations en attente",
   settingsModulesTitle: "Modules actifs",
   settingsModulesHint: "Les modules désactivés sont masqués dans la navigation.",
@@ -587,6 +591,10 @@ const en = {
     "Your invitation code ({code}) will be your temporary password. You must change it on first sign-in.",
   settingsMembersActive: "Active members",
   settingsMembersHint: "Accounts that accepted their invite. Pending invites are listed below.",
+  settingsDeleteMember: "Remove",
+  settingsDeleteMemberConfirm:
+    "Remove {name} from the team? Their account will be deleted if they belong to no other organization.",
+  settingsMemberRemoved: "Member removed",
   settingsPendingInvites: "Pending invites",
   settingsModulesTitle: "Active modules",
   settingsModulesHint: "Disabled modules are hidden from navigation.",

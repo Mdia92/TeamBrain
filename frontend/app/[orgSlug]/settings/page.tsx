@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { apiClient } from "@/app/lib/api";
+import { Trash2 } from "lucide-react";
+import { apiClient, ApiRequestError } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { canManageOrg } from "@/app/lib/permissions";
 import { useTranslation } from "@/app/lib/use-locale";
@@ -17,6 +18,7 @@ import { OrgPolicySettings } from "@/components/org-policy-settings";
 import { AutomationBuilder } from "@/components/automation-builder";
 import { SettingsGeneralPanel } from "@/components/settings/settings-general-panel";
 import { SettingsPasswordPanel } from "@/components/settings/change-password-form";
+import { useToast } from "@/components/ui/toast";
 
 const ALL_TABS: { id: string; labelKey: I18nKey; adminOnly: boolean }[] = [
   { id: "general", labelKey: "settingsTabGeneral", adminOnly: false },
@@ -49,6 +51,7 @@ const ROLE_OPTIONS: { value: string; labelKey: I18nKey }[] = [
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
   const { t } = useTranslation();
+  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const orgSlug = user?.org_slug ?? "";
@@ -101,6 +104,27 @@ export default function SettingsPage() {
     await apiClient.patch(`/api/members/${memberId}/role`, { role });
     const m = await apiClient.get<{ items: typeof members }>("/api/members");
     setMembers(m.items);
+  }
+
+  function canDeleteMember(member: { id: string; role: string }) {
+    if (member.id === user?.id) return false;
+    if (member.role === "owner") return false;
+    if (user?.role === "admin" && member.role === "admin") return false;
+    return true;
+  }
+
+  async function deleteMember(member: { id: string; full_name: string; role: string }) {
+    if (!canDeleteMember(member)) return;
+    const msg = t("settingsDeleteMemberConfirm").replace("{name}", member.full_name);
+    if (!window.confirm(msg)) return;
+    try {
+      await apiClient.delete(`/api/members/${member.id}`);
+      const m = await apiClient.get<{ items: typeof members }>("/api/members");
+      setMembers(m.items);
+      toast(t("settingsMemberRemoved"), "success");
+    } catch (err) {
+      toast(err instanceof ApiRequestError ? err.message : t("errorGeneric"), "error");
+    }
   }
 
   async function toggleModule(id: string) {
@@ -182,6 +206,7 @@ export default function SettingsPage() {
                       <select
                         value={m.role}
                         onChange={(e) => void updateMemberRole(m.id, e.target.value)}
+                        disabled={m.role === "owner"}
                         className="rounded-input border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                       >
                         {ROLE_OPTIONS.map((r) => (
@@ -190,6 +215,16 @@ export default function SettingsPage() {
                           </option>
                         ))}
                       </select>
+                      {canDeleteMember(m) && (
+                        <button
+                          type="button"
+                          onClick={() => void deleteMember(m)}
+                          className="rounded border border-rose-200 p-1.5 text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:hover:bg-rose-950/30"
+                          title={t("settingsDeleteMember")}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>

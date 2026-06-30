@@ -128,7 +128,7 @@ export function SettingsPasswordPanel() {
       </h3>
       <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">{t("changePasswordDesc")}</p>
       <div className="mt-4">
-        <ChangePasswordForm onSuccess={() => refreshUser()} />
+        <ChangePasswordForm onSuccess={() => { void refreshUser(); }} />
       </div>
     </div>
   );

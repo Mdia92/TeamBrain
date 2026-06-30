@@ -11,6 +11,7 @@ from app.auth.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.db.sql_compat import is_sqlite
 from app.pagination import decode_cursor, paginate_response
+from app.services.user_delete import remove_org_member
 from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/members", tags=["members"])
@@ -115,3 +116,40 @@ async def update_member_role(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Membre introuvable")
     await session.commit()
     return {"id": member_id, "role": body.role}
+
+
+@router.delete("/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_member(
+    member_id: str,
+    user: dict = Depends(require_role("owner", "admin")),
+    _write: dict = Depends(require_write_access),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    org_id = str(user["organization_id"])
+    if member_id == str(user["id"]):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Vous ne pouvez pas supprimer votre propre compte ici")
+
+    owner_row = (
+        await session.execute(
+            text("SELECT owner_id FROM organizations WHERE id = CAST(:oid AS uuid)").bindparams(oid=org_id),
+        )
+    ).first()
+    if owner_row and str(owner_row[0]) == member_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Le propriétaire de l'organisation ne peut pas être supprimé")
+
+    target_role = (
+        await session.execute(
+            text(
+                "SELECT role FROM org_memberships"
+                " WHERE user_id = CAST(:mid AS uuid) AND organization_id = CAST(:oid AS uuid) AND is_active = true"
+            ).bindparams(mid=member_id, oid=org_id),
+        )
+    ).scalar()
+    if not target_role:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Membre introuvable")
+    if user["role"] == "admin" and target_role in ("owner", "admin"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Seul le propriétaire peut retirer un administrateur")
+
+    if not await remove_org_member(session, org_id=org_id, user_id=member_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Membre introuvable")
+    await session.commit()

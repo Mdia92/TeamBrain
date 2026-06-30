@@ -15,6 +15,8 @@ Use this when testing live on Vercel + Railway + Supabase and you want **zero or
    ```
    Both should return `0`.
 
+**In-app alternative:** as owner/admin, remove members under **Paramètres → Équipe** (trash icon). This deletes their user row when they belong to no other organization. The org owner cannot be removed this way.
+
 Optional: delete uploaded files in Supabase Storage (documents bucket) if you use S3/Storage — otherwise old files may remain orphaned.
 
 ## 2. Deploy latest code
