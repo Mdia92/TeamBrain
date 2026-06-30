@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.llm_client import generate_text
 from app.agents.memory_service import MemoryService
-from app.auth.dependencies import get_current_user, require_org_admin, require_role
+from app.auth.dependencies import get_current_user, require_org_admin
 from app.automation import run_automation_event
 from app.db.session import get_db
 from app.pagination import cursor_clause, paginate_response
@@ -26,8 +26,8 @@ from app.services.document_extract import (
     parse_tags_from_text,
 )
 from app.services.document_search import embed_document, search_documents_semantic
-from app.services.module_findings import ingest_document_findings
 from app.services.memory_archive import archive_document
+from app.services.module_findings import ingest_document_findings
 from app.services.org_activity import broadcast_org_activity
 from app.services.voice_notes import ingest_voice_note, read_upload_audio
 from app.storage.s3 import get_storage

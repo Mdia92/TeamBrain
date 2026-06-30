@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.meeting_extractor import extract_meeting_intelligence
 from app.agents.memory_service import MemoryService
-from app.auth.dependencies import get_current_user, require_org_admin, require_role
+from app.auth.dependencies import get_current_user, require_org_admin
 from app.automation import run_automation_event
 from app.db.session import get_db
 from app.events.worker import trigger_on_meeting_processed

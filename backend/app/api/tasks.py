@@ -11,14 +11,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.memory_service import MemoryService
-from app.auth.dependencies import get_current_user, require_org_admin, require_role
+from app.auth.dependencies import get_current_user, require_org_admin
 from app.auth.roles import ADMIN_ROLES
 from app.automation import run_automation_event
 from app.db.session import get_db
 from app.events.worker import trigger_on_task_change
 from app.pagination import decode_cursor, encode_cursor
-from app.services.module_findings import ingest_task_event
 from app.services.memory_archive import archive_task
+from app.services.module_findings import ingest_task_event
 from app.services.org_activity import broadcast_org_activity
 from app.services.task_dependencies import dependency_would_cycle, unresolved_dependency_titles
 from app.trial import require_write_access
