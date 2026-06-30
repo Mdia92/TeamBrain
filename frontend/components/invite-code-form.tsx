@@ -67,7 +67,10 @@ export function InviteCodeForm({ onValidated, submitLabel = "Continuer" }: Props
           className="tb-input"
         />
         <p className="mt-1 text-xs text-slate-500">
-          Code fourni par l&apos;équipe Timtimol — ne le partagez pas publiquement.
+          Saisissez le <strong>code secret</strong> (pas le nom de variable Railway). Exemple si configuré
+          : <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">2026timtimol</code> — vérifiez la
+          valeur exacte de <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">PILOT_INVITE_CODE</code> dans
+          Railway → Variables.
         </p>
       </div>
       {error && <p className="text-sm text-rose-600">{error}</p>}

@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     pilot_invite_code: str = ""
     pilot_email_domains: str = ""  # empty = any email; comma-separated to restrict later
 
+    @field_validator("pilot_invite_code", mode="before")
+    @classmethod
+    def normalize_pilot_invite_code(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().replace("\r", "").replace("\n", "")
+        return value
+
     # Optional Google OAuth (login only — no public signup via Google)
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""

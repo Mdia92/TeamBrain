@@ -32,7 +32,7 @@ Check: `GET https://YOUR-RAILWAY-URL/api/health` — `db_migration` should be `0
 
 | Where | Variable | Purpose |
 |-------|----------|---------|
-| Railway | `PILOT_INVITE_CODE` | Secret code for **first** org creation at `/create` |
+| Railway | `PILOT_INVITE_CODE` | Secret code for **first** org creation at `/create` — enter the **value** on `/create`, not the variable name |
 | Railway | `FRONTEND_URL` | Your Vercel URL (invite links) |
 | Railway | `CORS_ORIGINS` | Same Vercel URL |
 | Vercel | `NEXT_PUBLIC_API_URL` | `https://YOUR-RAILWAY-URL` |
@@ -41,7 +41,8 @@ Check: `GET https://YOUR-RAILWAY-URL/api/health` — `db_migration` should be `0
 ## 4. First user — create the organization
 
 1. Open `https://YOUR-APP.vercel.app/create`
-2. Enter **`PILOT_INVITE_CODE`** (from Railway — not shown in UI).
+2. Enter the **secret value** of `PILOT_INVITE_CODE` from Railway (not the text `PILOT_INVITE_CODE`).  
+   If Railway has `PILOT_INVITE_CODE=2026timtimol`, type **`2026timtimol`** (case-insensitive).
 3. Complete the wizard: org name, **your** admin email, **your** password, modules, etc.
 4. You land on the dashboard as **owner**.
 
@@ -82,6 +83,7 @@ You are the first user. No team invites exist yet.
 
 ## Troubleshooting
 
+- **Pilot code rejected on `/create`** → type the **value** of `PILOT_INVITE_CODE` from Railway (e.g. `2026timtimol`), not the variable name. Quick test: `POST …/api/auth/validate-invite-code` with `{"code":"…"}` → `"valid": true`.
 - **Invite code validation fails on live site** → fix `NEXT_PUBLIC_API_URL` on Vercel (must include `https://`).
 - **Signup/login 500** → check Railway `DATABASE_URL` (no trailing newline).
 - **Stale UI after deploy** → DevTools → Application → Service Workers → Unregister, hard refresh.
