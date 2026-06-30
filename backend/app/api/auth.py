@@ -84,7 +84,7 @@ async def _load_pending_invite(
         row = (
             await session.execute(
                 text(
-                    "SELECT id, organization_id, email, role, token FROM organization_invites"
+                    "SELECT id, organization_id, email, role, token, short_code FROM organization_invites"
                     f" WHERE short_code = :code AND accepted_at IS NULL AND {exp}"
                 ).bindparams(code=code),
             )
@@ -94,7 +94,7 @@ async def _load_pending_invite(
         row = (
             await session.execute(
                 text(
-                    "SELECT id, organization_id, email, role, token FROM organization_invites"
+                    "SELECT id, organization_id, email, role, token, short_code FROM organization_invites"
                     f" WHERE token = :token AND accepted_at IS NULL AND {exp}"
                 ).bindparams(token=token),
             )
@@ -135,7 +135,8 @@ def _user_payload(user_id: str, row: dict, org_slug: str) -> dict:
         "role": row["role"],
         "organization_id": str(row["organization_id"]),
         "org_slug": org_slug,
-        "onboarding_completed": row.get("onboarding_completed", False),
+        "onboarding_completed": bool(row.get("onboarding_completed", False)),
+        "must_change_password": bool(row.get("must_change_password", False)),
     }
 
 
@@ -194,8 +195,12 @@ class AcceptInviteSignupIn(BaseModel):
     short_code: str | None = None
     full_name: str = Field(min_length=2)
     email: EmailStr
-    password: str = Field(min_length=8)
-    password_confirm: str = Field(min_length=8)
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
+    new_password_confirm: str = Field(min_length=8)
 
 
 class AcceptInviteLoginIn(BaseModel):
@@ -375,11 +380,12 @@ async def login(
     body: LoginIn,
     session: AsyncSession = Depends(get_db),
 ) -> dict:
+    active_clause = "is_active = 1" if is_sqlite() else "is_active = true"
     row = (
         await session.execute(
             text(
-                "SELECT id, full_name, email, password_hash, organization_id, onboarding_completed"
-                " FROM users WHERE email = :e AND is_active = true"
+                "SELECT id, full_name, email, password_hash, organization_id, onboarding_completed,"
+                f" must_change_password FROM users WHERE email = :e AND {active_clause}"
             ).bindparams(e=body.email),
         )
     ).mappings().first()
@@ -486,6 +492,7 @@ async def me(user: dict = Depends(get_current_user), session: AsyncSession = Dep
         "org_slug": org["slug"] if org else user.get("org_slug", ""),
         "org_name": org["name"] if org else user.get("org_name", ""),
         "onboarding_completed": user["onboarding_completed"],
+        "must_change_password": bool(user.get("must_change_password", False)),
         "settings": org["settings"] if org else {},
         "organizations": [
             {"id": str(o["id"]), "name": o["name"], "slug": o["slug"], "role": o["role"]}
@@ -809,8 +816,6 @@ async def accept_invite_signup(
     body: AcceptInviteSignupIn,
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    if body.password != body.password_confirm:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Les mots de passe ne correspondent pas")
     if not body.token and not body.short_code:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Token ou code d'invitation requis")
     invite = await _load_pending_invite(session, token=body.token, short_code=body.short_code)
@@ -818,6 +823,10 @@ async def accept_invite_signup(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation invalide ou expirée")
     if body.email.lower() != invite["email"].lower():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "L'email ne correspond pas à l'invitation")
+
+    initial_code = (invite.get("short_code") or "").strip().upper()
+    if not initial_code:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Code d'invitation manquant sur cette invitation")
 
     existing = (
         await session.execute(text("SELECT 1 FROM users WHERE email = :e").bindparams(e=body.email))
@@ -828,20 +837,36 @@ async def accept_invite_signup(
     user_id = uuid.uuid4()
     org_id = str(invite["organization_id"])
     await bootstrap_signup_rls(session, org_id=org_id, user_id=str(user_id))
-    await session.execute(
-        text(
-            "INSERT INTO users (id, organization_id, full_name, email, role, password_hash,"
-            " onboarding_completed) VALUES (CAST(:uid AS uuid), CAST(:oid AS uuid), :name, :email,"
-            " :role, :ph, true)"
-        ).bindparams(
-            uid=str(user_id),
-            oid=org_id,
-            name=body.full_name,
-            email=body.email,
-            role=invite["role"],
-            ph=hash_password(body.password),
-        ),
-    )
+    if is_sqlite():
+        await session.execute(
+            text(
+                "INSERT INTO users (id, organization_id, full_name, email, role, password_hash,"
+                " onboarding_completed, must_change_password) VALUES (:uid, :oid, :name, :email,"
+                " :role, :ph, 1, 1)"
+            ).bindparams(
+                uid=str(user_id),
+                oid=org_id,
+                name=body.full_name,
+                email=body.email,
+                role=invite["role"],
+                ph=hash_password(initial_code),
+            ),
+        )
+    else:
+        await session.execute(
+            text(
+                "INSERT INTO users (id, organization_id, full_name, email, role, password_hash,"
+                " onboarding_completed, must_change_password) VALUES (CAST(:uid AS uuid),"
+                " CAST(:oid AS uuid), :name, :email, :role, :ph, true, true)"
+            ).bindparams(
+                uid=str(user_id),
+                oid=org_id,
+                name=body.full_name,
+                email=body.email,
+                role=invite["role"],
+                ph=hash_password(initial_code),
+            ),
+        )
     await create_membership(session, user_id=str(user_id), org_id=org_id, role=invite["role"])
     await session.execute(
         text(
@@ -872,8 +897,72 @@ async def accept_invite_signup(
     return {
         "access_token": access,
         "token_type": "bearer",
-        "user": _user_payload(str(user_id), {"full_name": body.full_name, "email": body.email, "role": invite["role"], "organization_id": org_id, "onboarding_completed": True}, slug["slug"] if slug else ""),
+        "user": _user_payload(
+            str(user_id),
+            {
+                "full_name": body.full_name,
+                "email": body.email,
+                "role": invite["role"],
+                "organization_id": org_id,
+                "onboarding_completed": True,
+                "must_change_password": True,
+            },
+            slug["slug"] if slug else "",
+        ),
     }
+
+
+@router.post("/change-password")
+@limiter.limit("10/minute")
+async def change_password(
+    request: Request,
+    body: ChangePasswordIn,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    if body.new_password != body.new_password_confirm:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Les mots de passe ne correspondent pas")
+    if body.new_password == body.current_password:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Le nouveau mot de passe doit être différent du mot de passe actuel",
+        )
+
+    if is_sqlite():
+        row = (
+            await session.execute(
+                text("SELECT password_hash FROM users WHERE id = :uid").bindparams(uid=str(user["id"])),
+            )
+        ).mappings().first()
+    else:
+        row = (
+            await session.execute(
+                text("SELECT password_hash FROM users WHERE id = CAST(:uid AS uuid)").bindparams(uid=str(user["id"])),
+            )
+        ).mappings().first()
+    if row is None or not row["password_hash"]:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Compte sans mot de passe")
+    if not verify_password(body.current_password, row["password_hash"]):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mot de passe actuel incorrect")
+    if verify_password(body.new_password, row["password_hash"]):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Le nouveau mot de passe doit être différent")
+
+    new_hash = hash_password(body.new_password)
+    if is_sqlite():
+        await session.execute(
+            text(
+                "UPDATE users SET password_hash = :ph, must_change_password = 0 WHERE id = :uid"
+            ).bindparams(ph=new_hash, uid=str(user["id"])),
+        )
+    else:
+        await session.execute(
+            text(
+                "UPDATE users SET password_hash = :ph, must_change_password = false"
+                " WHERE id = CAST(:uid AS uuid)"
+            ).bindparams(ph=new_hash, uid=str(user["id"])),
+        )
+    await session.commit()
+    return {"status": "ok", "must_change_password": False}
 
 
 @router.post("/invite/accept-login")
@@ -890,11 +979,12 @@ async def accept_invite_login(
     if not invite:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation invalide ou expirée")
 
+    active_clause = "is_active = 1" if is_sqlite() else "is_active = true"
     row = (
         await session.execute(
             text(
-                "SELECT id, full_name, email, password_hash, onboarding_completed"
-                " FROM users WHERE email = :e AND is_active = true"
+                "SELECT id, full_name, email, password_hash, onboarding_completed, must_change_password"
+                f" FROM users WHERE email = :e AND {active_clause}"
             ).bindparams(e=body.email),
         )
     ).mappings().first()

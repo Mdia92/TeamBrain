@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState, KeyboardEvent } from "react";
+import { postAuthPath } from "@/app/lib/auth-routes";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { t } from "@/app/lib/i18n";
 import * as authApi from "@/app/lib/auth-api";
@@ -99,7 +100,7 @@ export default function CreateOrgPage() {
             invites: validInvites,
           });
           const profile = await refreshUser();
-          router.push(`/${profile?.org_slug ?? "app"}/dashboard`);
+          if (profile) router.push(postAuthPath(profile));
         } else {
           const result = await authApi.createOrg({
             organization_name: orgName,
@@ -111,7 +112,7 @@ export default function CreateOrgPage() {
           });
           applySession(result);
           const profile = await refreshUser();
-          router.push(`/${profile?.org_slug ?? result.user.org_slug}/dashboard`);
+          if (profile) router.push(postAuthPath(profile));
         }
       } else {
         if (password !== passwordConfirm) {
@@ -141,7 +142,7 @@ export default function CreateOrgPage() {
           invites: validInvites,
         });
         const profile = await refreshUser();
-        router.push(`/${profile?.org_slug ?? "app"}/dashboard`);
+        if (profile) router.push(postAuthPath(profile));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur");

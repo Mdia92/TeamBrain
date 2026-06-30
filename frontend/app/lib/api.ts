@@ -35,6 +35,7 @@ export type User = {
   org_slug?: string;
   org_name?: string;
   onboarding_completed?: boolean;
+  must_change_password?: boolean;
   settings?: Record<string, unknown>;
   organizations?: { id: string; name: string; slug: string; role: string }[];
   billing?: {

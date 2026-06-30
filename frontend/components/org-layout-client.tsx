@@ -25,6 +25,10 @@ export function OrgLayoutClient({
       router.replace("/login");
       return;
     }
+    if (user.must_change_password) {
+      router.replace("/change-password");
+      return;
+    }
     if (!user.onboarding_completed) {
       router.replace("/onboarding");
       return;

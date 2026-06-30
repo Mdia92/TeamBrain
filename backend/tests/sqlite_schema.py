@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT,
     is_active INTEGER DEFAULT 1,
     onboarding_completed INTEGER DEFAULT 0,
+    must_change_password INTEGER DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS org_memberships (

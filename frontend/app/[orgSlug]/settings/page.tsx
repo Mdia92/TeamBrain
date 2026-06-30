@@ -16,6 +16,7 @@ import { PayDunyaCheckoutButton, PayDunyaStatusBadge, TrialUpgradePanel } from "
 import { OrgPolicySettings } from "@/components/org-policy-settings";
 import { AutomationBuilder } from "@/components/automation-builder";
 import { SettingsGeneralPanel } from "@/components/settings/settings-general-panel";
+import { SettingsPasswordPanel } from "@/components/settings/change-password-form";
 
 const ALL_TABS: { id: string; labelKey: I18nKey; adminOnly: boolean }[] = [
   { id: "general", labelKey: "settingsTabGeneral", adminOnly: false },
@@ -60,12 +61,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [savingModules, setSavingModules] = useState(false);
   const [paydunya, setPaydunya] = useState<{ configured: boolean; mode: string; tiers?: Record<string, { price_fcfa: number }> } | null>(null);
-
-  useEffect(() => {
-    if (user && !isAdmin) {
-      router.replace(`/${user.org_slug}/dashboard`);
-    }
-  }, [user, isAdmin, router]);
 
   useEffect(() => {
     const fromUrl = searchParams.get("tab");
@@ -155,17 +150,20 @@ export default function SettingsPage() {
       ) : (
         <>
           {tab === "general" && (
-            <SettingsGeneralPanel
-              orgSlug={orgSlug}
-              orgName={user?.org_name ?? ""}
-              orgDescription={String(settings?.org_description ?? "")}
-              orgSector={String(settings?.org_sector ?? "")}
-              orgLocation={String(settings?.org_location ?? "")}
-              isAdmin={isAdmin}
-              onSaved={async () => {
-                await refreshUser();
-              }}
-            />
+            <div className="space-y-6">
+              <SettingsGeneralPanel
+                orgSlug={orgSlug}
+                orgName={user?.org_name ?? ""}
+                orgDescription={String(settings?.org_description ?? "")}
+                orgSector={String(settings?.org_sector ?? "")}
+                orgLocation={String(settings?.org_location ?? "")}
+                isAdmin={isAdmin}
+                onSaved={async () => {
+                  await refreshUser();
+                }}
+              />
+              <SettingsPasswordPanel />
+            </div>
           )}
 
           {tab === "team" && isAdmin && (

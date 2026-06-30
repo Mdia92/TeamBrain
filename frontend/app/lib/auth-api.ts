@@ -101,8 +101,6 @@ export function acceptInviteSignup(data: {
   short_code?: string;
   full_name: string;
   email: string;
-  password: string;
-  password_confirm: string;
 }): Promise<LoginResponse> {
   return apiClient.post("/api/auth/invite/accept-signup", data);
 }
@@ -114,6 +112,14 @@ export function acceptInviteLogin(data: {
   password: string;
 }): Promise<LoginResponse> {
   return apiClient.post("/api/auth/invite/accept-login", data);
+}
+
+export function changePassword(data: {
+  current_password: string;
+  new_password: string;
+  new_password_confirm: string;
+}): Promise<{ status: string; must_change_password: boolean }> {
+  return apiClient.post("/api/auth/change-password", data);
 }
 
 export function patchOrgSettings(data: {

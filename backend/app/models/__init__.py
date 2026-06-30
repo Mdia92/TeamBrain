@@ -51,6 +51,7 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    must_change_password: Mapped[bool] = mapped_column(Boolean, server_default="false")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     google_sub: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

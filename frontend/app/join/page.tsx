@@ -4,10 +4,12 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as authApi from "@/app/lib/auth-api";
+import { useTranslation } from "@/app/lib/use-locale";
 import { AuthCard } from "@/components/marketing-shell";
 
 export default function JoinPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -23,9 +25,9 @@ export default function JoinPage() {
         router.push(`/invite/${token}`);
         return;
       }
-      setError("Code invalide");
+      setError(t("joinInvalidCode"));
     } catch {
-      setError("Code d'invitation invalide ou expiré");
+      setError(t("joinInvalidCode"));
     } finally {
       setLoading(false);
     }
@@ -33,17 +35,13 @@ export default function JoinPage() {
 
   return (
     <AuthCard
-      title="Rejoindre une équipe"
-      subtitle="Entrez le code d'invitation reçu de votre administrateur (ex. TB-A1B2C3)"
+      title={t("joinTitle")}
+      subtitle={t("joinSubtitle")}
       footer={
         <p className="text-center text-sm text-slate-500">
-          Déjà un compte ?{" "}
+          {t("joinHasAccount")}{" "}
           <Link href="/login" className="font-medium text-primary hover:underline">
-            Se connecter
-          </Link>
-          {" · "}
-          <Link href="/create" className="font-medium text-primary hover:underline">
-            Créer un espace (code pilote)
+            {t("login")}
           </Link>
         </p>
       }
@@ -51,7 +49,7 @@ export default function JoinPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="tb-label" htmlFor="invite_code">
-            Code d&apos;invitation équipe
+            {t("joinCodeLabel")}
           </label>
           <input
             id="invite_code"
@@ -64,9 +62,10 @@ export default function JoinPage() {
         </div>
         {error && <p className="text-sm text-rose-600">{error}</p>}
         <button type="submit" disabled={loading} className="tb-btn-primary h-10 w-full">
-          {loading ? "Vérification…" : "Continuer"}
+          {loading ? t("joinVerifying") : t("joinVerify")}
         </button>
       </form>
+      <p className="mt-4 text-center text-xs leading-relaxed text-slate-500">{t("loginInviteOnlyHint")}</p>
     </AuthCard>
   );
 }

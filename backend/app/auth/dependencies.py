@@ -74,7 +74,7 @@ async def get_current_user(
         row = (
             await session.execute(
                 text(
-                    "SELECT id, organization_id, full_name, email, onboarding_completed"
+                    "SELECT id, organization_id, full_name, email, onboarding_completed, must_change_password"
                     " FROM users WHERE id = :id AND is_active = 1"
                 ).bindparams(id=user_id),
             )
@@ -83,7 +83,7 @@ async def get_current_user(
         row = (
             await session.execute(
                 text(
-                    "SELECT id, organization_id, full_name, email, onboarding_completed"
+                    "SELECT id, organization_id, full_name, email, onboarding_completed, must_change_password"
                     " FROM users WHERE id = CAST(:id AS uuid) AND is_active = true"
                 ).bindparams(id=user_id),
             )

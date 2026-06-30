@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
+import { postAuthPath } from "@/app/lib/auth-routes";
 import * as authApi from "@/app/lib/auth-api";
-import { t } from "@/app/lib/i18n";
+import { useTranslation } from "@/app/lib/use-locale";
 import { AppFooter } from "@/components/marketing-shell";
 
 export default function InvitePage() {
@@ -13,11 +14,13 @@ export default function InvitePage() {
   const token = String(params.token);
   const router = useRouter();
   const { applySession } = useAuth();
+  const { t } = useTranslation();
   const [preview, setPreview] = useState<{
     org_name: string;
     email: string;
     role: string;
     inviter_name?: string;
+    short_code?: string;
   } | null>(null);
   const [mode, setMode] = useState<"signup" | "login">("signup");
   const [error, setError] = useState("");
@@ -34,22 +37,13 @@ export default function InvitePage() {
     const fd = new FormData(e.currentTarget);
     try {
       if (mode === "signup") {
-        const password = String(fd.get("password"));
-        const passwordConfirm = String(fd.get("password_confirm"));
-        if (password !== passwordConfirm) {
-          setError("Les mots de passe ne correspondent pas");
-          setLoading(false);
-          return;
-        }
         const result = await authApi.acceptInviteSignup({
           token,
           full_name: String(fd.get("full_name")),
           email: String(fd.get("email")),
-          password,
-          password_confirm: passwordConfirm,
         });
         applySession(result);
-        router.push(`/${result.user.org_slug}/dashboard`);
+        router.push(postAuthPath(result.user));
       } else {
         const result = await authApi.acceptInviteLogin({
           token,
@@ -57,7 +51,7 @@ export default function InvitePage() {
           password: String(fd.get("password")),
         });
         applySession(result);
-        router.push(`/${result.user.org_slug}/dashboard`);
+        router.push(postAuthPath(result.user));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur");
@@ -76,6 +70,8 @@ export default function InvitePage() {
       </div>
     );
   }
+
+  const tempCode = preview?.short_code?.toUpperCase();
 
   return (
     <div className="flex min-h-screen flex-col bg-stone-50 dark:bg-stone-950">
@@ -106,10 +102,17 @@ export default function InvitePage() {
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           {mode === "signup" && (
-            <div>
-              <label className="text-sm font-medium">{t("fullName")}</label>
-              <input name="full_name" required className="mt-1 w-full rounded-lg border px-3 py-2 dark:bg-stone-800" />
-            </div>
+            <>
+              <div>
+                <label className="text-sm font-medium">{t("fullName")}</label>
+                <input name="full_name" required className="mt-1 w-full rounded-lg border px-3 py-2 dark:bg-stone-800" />
+              </div>
+              {tempCode && (
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                  {t("inviteTempPasswordHint").replace("{code}", tempCode)}
+                </p>
+              )}
+            </>
           )}
           <div>
             <label className="text-sm font-medium">{t("email")}</label>
@@ -122,14 +125,10 @@ export default function InvitePage() {
               className="mt-1 w-full rounded-lg border px-3 py-2 dark:bg-stone-800"
             />
           </div>
-          <div>
-            <label className="text-sm font-medium">{t("password")}</label>
-            <input name="password" type="password" required minLength={8} className="mt-1 w-full rounded-lg border px-3 py-2 dark:bg-stone-800" />
-          </div>
-          {mode === "signup" && (
+          {mode === "login" && (
             <div>
-              <label className="text-sm font-medium">Confirmer le mot de passe</label>
-              <input name="password_confirm" type="password" required minLength={8} className="mt-1 w-full rounded-lg border px-3 py-2 dark:bg-stone-800" />
+              <label className="text-sm font-medium">{t("password")}</label>
+              <input name="password" type="password" required minLength={8} className="mt-1 w-full rounded-lg border px-3 py-2 dark:bg-stone-800" />
             </div>
           )}
           {error && <p className="text-sm text-red-600">{error}</p>}

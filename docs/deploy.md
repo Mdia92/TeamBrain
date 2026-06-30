@@ -8,7 +8,7 @@
 - Python **3.12** (`.python-version` in `backend/`)
 - `railway.toml` runs `alembic upgrade head` on each deploy (release phase)
 
-After deploy, check `GET /api/health` — should include `db_migration` (latest: `013_automation`) and `org_memberships_table: true`.
+After deploy, check `GET /api/health` — should include `db_migration` (latest: `018_must_change_password`) and `org_memberships_table: true`.
 
 ### Required env (Railway)
 
@@ -107,6 +107,8 @@ alembic upgrade head
 ```
 
 Optional local demo data: `SEED_DEMO_PASSWORD=... python scripts/seed_timtimol.py` (never commit password).
+
+**Production fresh start:** wipe Supabase data and replay invite flow — see [fresh-start.md](fresh-start.md).
 
 ## Local development
 

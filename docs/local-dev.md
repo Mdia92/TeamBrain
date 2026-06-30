@@ -13,7 +13,9 @@ TeamBrain uses **non-default ports** so it can run alongside other projects on `
 
 **Pilot signup:** invite code required on `/create` (set `PILOT_INVITE_CODE` on Railway). Any email accepted unless `PILOT_EMAIL_DOMAINS` is set.
 
-**Team invites:** onboarding/settings invites stay **pending** until the invitee accepts via `/invite/{token}` or `/join` + code `TB-XXXXXX`. Configure `SMTP_*` in `backend/.env` to email invitees; without SMTP the API still creates the invite and the UI shows the link to copy.
+**Team invites:** onboarding/settings invites stay **pending** until the invitee accepts via `/invite/{token}` or `/join` + code `TB-XXXXXX`. New members get the invitation code as a **temporary password** and are redirected to `/change-password` on first sign-in. Configure `SMTP_*` in `backend/.env` to email invitees; without SMTP the API still creates the invite and the UI shows the link to copy.
+
+**Password change:** any signed-in user can update their password under **Paramètres → Général**. Run migration `018_must_change_password` after pull (`alembic upgrade head`).
 
 **Permissions:** only **owner/admin** can create, edit, or delete projects, tasks, documents, and meetings. Other members can mark **their assigned tasks** as done.
 

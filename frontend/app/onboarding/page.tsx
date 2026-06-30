@@ -17,6 +17,10 @@ function OnboardingRedirect() {
       router.replace("/login");
       return;
     }
+    if (user.must_change_password) {
+      router.replace("/change-password");
+      return;
+    }
     if (user.onboarding_completed && user.org_slug) {
       router.replace(`/${user.org_slug}/dashboard`);
       return;

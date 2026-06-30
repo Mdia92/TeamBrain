@@ -31,7 +31,11 @@ Pour accepter l'invitation :
    {join_url}
    Code : {short_code}
 
-3. Créez votre compte avec l'adresse email qui a reçu cette invitation, ou connectez-vous si vous avez déjà un compte.
+3. Créez votre compte avec l'adresse email qui a reçu cette invitation.
+   Votre mot de passe temporaire est le code ci-dessus — vous devrez le changer
+   dès votre première connexion.
+
+4. Si vous avez déjà un compte TeamBrain, connectez-vous pour accepter l'invitation.
 
 Vous n'apparaîtrez dans l'équipe qu'après avoir accepté l'invitation.
 
