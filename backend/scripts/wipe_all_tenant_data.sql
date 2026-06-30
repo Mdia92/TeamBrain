@@ -23,7 +23,6 @@ TRUNCATE TABLE
   daily_status,
   meetings,
   events,
-  field_reports,
   documents,
   tasks,
   milestones,

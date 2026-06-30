@@ -99,6 +99,49 @@ Wrong (relative path bug or stale cache):
 
 `CORS_ORIGINS` and `FRONTEND_URL` must include `https://your-app.vercel.app`.
 
+## Platform wiring (recommended)
+
+One GitHub repo, three services — **do not** deploy the app from Supabase.
+
+```
+GitHub: Mdia92/TeamBrain (main)
+    │
+    ├── Railway  → backend/     → FastAPI + Alembic migrations
+    │                 │
+    │                 └── DATABASE_URL ──► Supabase Postgres (data only)
+    │
+    └── Vercel   → frontend/    → Next.js PWA
+                      │
+                      └── NEXT_PUBLIC_API_URL ──► Railway public URL
+```
+
+| Service | Connect to GitHub? | Role |
+|---------|-------------------|------|
+| **Railway** | Yes — repo `TeamBrain`, root **`backend/`**, branch `main`, auto-deploy | API, JWT auth, `alembic upgrade head` on each deploy |
+| **Vercel** | Yes — same repo, root **`frontend/`**, branch `main`, auto-deploy | UI |
+| **Supabase** | **Optional** — see below | Managed Postgres (+ optional Storage, Edge Functions) |
+
+**Supabase uses only Postgres** for TeamBrain (not Supabase Auth). `DATABASE_URL` on Railway points at the Supabase **session pooler** URL.
+
+### Should Supabase link to GitHub?
+
+**Not required** for the core app. Railway already applies schema via Alembic on deploy.
+
+Link Supabase ↔ GitHub **only if** you want:
+
+- Edge Functions (e.g. `empty-documents-bucket`) versioned in `supabase/functions/` and deployed from the repo
+- Supabase Branching (preview DB per PR — paid feature)
+
+**Avoid** a second migration path (`supabase/migrations/`) alongside `backend/alembic/` — two schema owners cause drift.
+
+### Checklist — all connected
+
+1. **Railway** → Settings → Source: GitHub `TeamBrain`, root `backend`, Production `main`
+2. **Vercel** → Project → Git: same repo, root `frontend`, Production `main`
+3. **Railway** env: `DATABASE_URL`, `JWT_SECRET_KEY`, `FRONTEND_URL`, `CORS_ORIGINS`, `PILOT_INVITE_CODE`
+4. **Vercel** env: `NEXT_PUBLIC_API_URL` = `https://…railway.app` (with `https://`)
+5. **Supabase** → Database → connection string in Railway only (no app deploy from Supabase)
+
 ## Database migrations
 
 ```bash
