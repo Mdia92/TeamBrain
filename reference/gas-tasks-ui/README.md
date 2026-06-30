@@ -7,4 +7,4 @@ Source export from Google AI Studio for visual alignment. **Do not run or import
 
 TeamBrain ports look + copy from here; APIs and RBAC stay in `frontend/app/[orgSlug]/tasks/`.
 
-To refresh: replace `teambrainggooglestudio.zip` and re-extract to `extracted/`.
+To refresh: re-export from Google AI Studio into `extracted/` (do not commit `.zip` archives).
