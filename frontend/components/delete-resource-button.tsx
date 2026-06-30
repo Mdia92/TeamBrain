@@ -2,6 +2,7 @@
 
 import { Trash2 } from "lucide-react";
 import { apiClient, ApiRequestError } from "@/app/lib/api";
+import { useOrgSync } from "@/app/contexts/OrgSyncContext";
 import { useTranslation } from "@/app/lib/use-locale";
 import { useToast } from "@/components/ui/toast";
 
@@ -18,6 +19,7 @@ export function DeleteResourceButton({
 }) {
   const { toast } = useToast();
   const { t } = useTranslation();
+  const { bumpLocal } = useOrgSync();
 
   async function handleDelete() {
     const msg = label
@@ -27,6 +29,7 @@ export function DeleteResourceButton({
     try {
       await apiClient.delete(path);
       toast(t("deleted"), "success");
+      bumpLocal();
       onDeleted?.();
     } catch (err) {
       toast(err instanceof ApiRequestError ? err.message : t("deleteError"), "error");

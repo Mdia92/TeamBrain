@@ -19,7 +19,7 @@ Multi-tenant offline-first team platform for West African field organizations. T
 1. Every business table has organization_id + RLS
 2. French default UI; official product name is **TeamBrain**
 3. Rules first, AI second for reminders and alerts
-4. Write memory only via MemoryService — no direct memory_metadata inserts
+4. Write memory only via MemoryService — deletes archive essence to memory_metadata before removing operational rows/files
 5. AI-created tasks show provenance (source + reference)
 6. Phone numbers SHA-256 hashed, never logged
 7. Offline field reports via IndexedDB sync queue (`teambrain-offline`)

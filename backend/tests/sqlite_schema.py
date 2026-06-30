@@ -104,6 +104,20 @@ CREATE TABLE IF NOT EXISTS pending_actions (
     status TEXT DEFAULT 'pending',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS org_notifications (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    module TEXT NOT NULL,
+    action TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id TEXT,
+    link_path TEXT,
+    read_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 

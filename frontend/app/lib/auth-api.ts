@@ -120,6 +120,8 @@ export function patchOrgSettings(data: {
   name?: string;
   org_description?: string;
   org_goals?: string;
+  org_sector?: string;
+  org_location?: string;
   modules?: string[];
 }): Promise<{ name: string; settings: Record<string, unknown> }> {
   return apiClient.patch("/api/organizations/current/settings", data);

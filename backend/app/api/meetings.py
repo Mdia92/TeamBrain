@@ -13,12 +13,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.meeting_extractor import extract_meeting_intelligence
 from app.agents.memory_service import MemoryService
-from app.auth.dependencies import get_current_user, require_role
+from app.auth.dependencies import get_current_user, require_org_admin, require_role
 from app.automation import run_automation_event
 from app.db.session import get_db
 from app.events.worker import trigger_on_meeting_processed
 from app.pagination import decode_cursor, paginate_response
+from app.services.cascade_delete import delete_meeting_cascade
+from app.services.memory_archive import archive_meeting
 from app.services.module_findings import ingest_meeting_findings
+from app.services.org_activity import broadcast_org_activity
 from app.storage.s3 import get_storage
 from app.trial import require_write_access
 from app.upload_limits import read_upload_bounded
@@ -59,7 +62,8 @@ async def upload_meeting(
     title: str = Form(...),
     project_id: str | None = Form(None),
     audio: UploadFile = File(...),
-    user: dict = Depends(require_write_access),
+    user: dict = Depends(require_org_admin),
+    _write: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     mid = uuid.uuid4()
@@ -260,6 +264,20 @@ async def upload_meeting(
             "tasks_created": len(created_tasks),
         },
     )
+    slug = user.get("org_slug") or "app"
+    await broadcast_org_activity(
+        session,
+        org_id=oid,
+        actor_id=str(user["id"]),
+        module="meetings",
+        action="created",
+        title="Nouvelle réunion",
+        body=f"Réunion « {title} » analysée — {len(created_tasks)} tâche(s) créée(s)",
+        entity_type="meeting",
+        entity_id=str(mid),
+        link_path=f"/{slug}/meetings",
+    )
+    await session.commit()
 
     return {
         "id": str(mid),
@@ -317,27 +335,32 @@ async def get_meeting(
 @router.delete("/{meeting_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_meeting(
     meeting_id: str,
-    user: dict = Depends(require_role("owner", "admin", "manager")),
+    user: dict = Depends(require_org_admin),
     session: AsyncSession = Depends(get_db),
 ) -> None:
     oid = str(user["organization_id"])
-    result = await session.execute(
-        text(
-            "DELETE FROM meetings WHERE id = CAST(:mid AS uuid) AND organization_id = CAST(:oid AS uuid)"
-            " RETURNING title"
-        ).bindparams(mid=meeting_id, oid=oid),
-    )
-    row = result.first()
-    if not row:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Réunion introuvable")
-    brain = MemoryService(session)
-    await brain.write_memory(
+    archived = await archive_meeting(
+        session,
         org_id=oid,
-        type="episodic",
+        meeting_id=meeting_id,
+        deleted_by=user.get("full_name"),
+    )
+    if not archived:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Réunion introuvable")
+    title = await delete_meeting_cascade(session, org_id=oid, meeting_id=meeting_id)
+    if not title:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Réunion introuvable")
+    slug = user.get("org_slug") or "app"
+    await broadcast_org_activity(
+        session,
+        org_id=oid,
+        actor_id=str(user["id"]),
+        module="meetings",
+        action="deleted",
+        title="Réunion supprimée",
+        body=f"La réunion « {title} » a été supprimée",
         entity_type="meeting",
         entity_id=meeting_id,
-        note=f"Réunion supprimée: {row[0]}",
-        source_module="meetings",
-        source_id=meeting_id,
+        link_path=f"/{slug}/meetings",
     )
     await session.commit()

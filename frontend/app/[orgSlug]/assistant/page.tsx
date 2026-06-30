@@ -8,7 +8,6 @@ import { apiClient, ApiRequestError } from "@/app/lib/api";
 import { isOrgAdmin } from "@/app/lib/permissions";
 import { useTranslation } from "@/app/lib/use-locale";
 import { cn } from "@/app/lib/utils";
-import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AssistantAvatar, AssistantLabel } from "@/components/assistant/assistant-avatar";
 import { drainAskAiQueue } from "@/components/ask-ai-popup";
@@ -172,11 +171,6 @@ function AssistantPageContent() {
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-6rem)]">
-      <PageHeader
-        title={t("assistant")}
-        description={t("assistantPageDescription")}
-      />
-
       <div className="tb-card flex flex-1 flex-col overflow-hidden">
         {pendingActions.length > 0 && (
           <div className="space-y-2 border-b border-slate-200 p-4 dark:border-slate-800">

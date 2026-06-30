@@ -53,6 +53,7 @@ class SendIn(BaseModel):
     content: str = Field(min_length=1)
     recipient_ids: list[str] | None = None
     broadcast: bool = False
+    category: str = Field(default="info", pattern="^(info|urgent|event)$")
 
 
 def _is_admin(user: dict) -> bool:
@@ -131,6 +132,32 @@ async def inbox_list(
     return {"items": items}
 
 
+@router.get("/announcements")
+async def list_announcements(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    """Team-wide broadcast announcements (megaphone feed)."""
+    oid = str(user["organization_id"])
+    rows = (
+        await session.execute(
+            text(
+                "SELECT m.id, m.subject, m.content, m.category, m.created_at,"
+                " u.full_name AS sender_name, om.role AS sender_role"
+                " FROM messages m"
+                " JOIN users u ON u.id = m.sender_id"
+                " JOIN org_memberships om ON om.user_id = u.id"
+                "  AND om.organization_id = m.organization_id AND om.is_active = true"
+                " WHERE m.organization_id = CAST(:oid AS uuid)"
+                " AND m.thread_parent_id IS NULL"
+                " AND m.recipient_ids IS NULL"
+                " ORDER BY m.created_at DESC LIMIT 100"
+            ).bindparams(oid=oid),
+        )
+    ).mappings().all()
+    return {"items": [dict(r) for r in rows], "can_publish": _is_admin(user)}
+
+
 @router.get("/inbox/{message_id}")
 async def inbox_thread(
     message_id: str,
@@ -206,8 +233,8 @@ async def send_inbox_message(
     await session.execute(
         text(
             "INSERT INTO messages (id, organization_id, channel_id, sender_id, subject, content,"
-            " recipient_ids) VALUES (CAST(:mid AS uuid), CAST(:oid AS uuid), NULL,"
-            " CAST(:uid AS uuid), :subject, :content, :rids)"
+            " recipient_ids, category) VALUES (CAST(:mid AS uuid), CAST(:oid AS uuid), NULL,"
+            " CAST(:uid AS uuid), :subject, :content, :rids, :category)"
         ).bindparams(
             mid=str(mid),
             oid=oid,
@@ -215,6 +242,7 @@ async def send_inbox_message(
             subject=body.subject,
             content=body.content,
             rids=recipient_ids,
+            category=body.category if recipient_ids is None else "info",
         ),
     )
 

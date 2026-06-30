@@ -15,6 +15,20 @@ TeamBrain uses **non-default ports** so it can run alongside other projects on `
 
 **Team invites:** onboarding/settings invites stay **pending** until the invitee accepts via `/invite/{token}` or `/join` + code `TB-XXXXXX`. Configure `SMTP_*` in `backend/.env` to email invitees; without SMTP the API still creates the invite and the UI shows the link to copy.
 
+**Permissions:** only **owner/admin** can create, edit, or delete projects, tasks, documents, and meetings. Other members can mark **their assigned tasks** as done.
+
+**App shell:** GAS-aligned dark sidebar (`reference/gas-tasks-ui`) — org switcher, TeamBrain Afrique brand, grouped nav. **Locale + theme** stay on `LocaleThemeBar` (sidebar footer + mobile header), not the GAS sun/moon toggle.
+
+**Tasks page (`/[orgSlug]/tasks`):** project-centric execution grid aligned with `reference/gas-tasks-ui/extracted/src/components/ProjectsView.tsx` — header card, per-project progress, nested task rows, live footer.
+
+**Messages (`/[orgSlug]/messages`):** GAS announcements feed (`AnnouncementsView`) — broadcast bulletins with category badges; legacy inbox UI removed.
+
+**Memory (`/[orgSlug]/memory`):** GAS staggered timeline (`MemoryView`) with semantic search and type filters.
+
+**Dashboard:** GAS welcome banner, KPI cards, activity/contributors charts, live feed panels — wired to `/api/dashboard/*`.
+
+**Memory on delete:** operational rows and files (S3 audio/PDF) are removed to free space, but **semantic archives** are written to `memory_metadata` first (summary, decisions, transcript excerpts, task lists). Ask AI and Mémoire can still retrieve what the organization knew. Deletes never remove existing memory rows.
+
 **Assistant:** UI label follows org language — **Ask AI** (English), **Xam** (French/Wolof). Tune LLM name via `ASSISTANT_NAME` / `ASSISTANT_PERSONALITY` in `backend/.env`.
 
 **Per-org rules:** defaults in `backend/app/policy/default_policy.yaml`; overrides in `organizations.settings.policy`. Admins edit via **Paramètres → Règles** or `GET/PATCH /api/organizations/current/policy`.
@@ -68,7 +82,7 @@ npm install   # first time only
 npm run dev   # serves on http://localhost:3010
 ```
 
-## Demo login (after seed)
+**Demo login (after seed):** set `SEED_DEMO_PASSWORD` in `backend/.env`, run `python scripts/seed_timtimol.py`, then log in as `amadou@timtimol.sn` with that password. Org slug: `timtimol` → http://localhost:3010/timtimol/tasks
 
 ## Demo seed (optional)
 

@@ -14,6 +14,9 @@ from app.agents.memory_service import MemoryService
 from app.auth.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.pagination import decode_cursor, encode_cursor
+from app.services.cascade_delete import delete_project_cascade
+from app.services.memory_archive import archive_project
+from app.services.org_activity import broadcast_org_activity
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -64,7 +67,7 @@ async def list_projects(
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_project(
     body: ProjectIn,
-    user: dict = Depends(require_role("owner", "admin", "manager")),
+    user: dict = Depends(require_role("owner", "admin")),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     pid = uuid.uuid4()
@@ -110,6 +113,20 @@ async def create_project(
         note=f"Projet créé: {body.name}",
         source_module="projects",
         source_id=str(pid),
+    )
+    await session.commit()
+    slug = user.get("org_slug") or "app"
+    await broadcast_org_activity(
+        session,
+        org_id=oid,
+        actor_id=str(user["id"]),
+        module="projects",
+        action="created",
+        title="Nouveau projet",
+        body=f"{user.get('full_name', 'Un admin')} a créé le projet « {body.name} »",
+        entity_type="project",
+        entity_id=str(pid),
+        link_path=f"/{slug}/projects",
     )
     await session.commit()
     return {"id": str(pid), "name": body.name}
@@ -217,7 +234,7 @@ async def get_project_timeline(
 async def update_project(
     project_id: str,
     body: ProjectIn,
-    user: dict = Depends(require_role("owner", "admin", "manager")),
+    user: dict = Depends(require_role("owner", "admin")),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     await session.execute(
@@ -244,26 +261,44 @@ async def update_project(
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(
     project_id: str,
-    user: dict = Depends(require_role("owner", "admin", "manager")),
+    user: dict = Depends(require_role("owner", "admin")),
     session: AsyncSession = Depends(get_db),
 ) -> None:
     org_id = str(user["organization_id"])
-    result = await session.execute(
-        text(
-            "DELETE FROM projects WHERE id = CAST(:pid AS uuid) AND organization_id = CAST(:oid AS uuid)"
-            " RETURNING id"
-        ).bindparams(pid=project_id, oid=org_id),
-    )
-    if not result.first():
+    name_row = (
+        await session.execute(
+            text(
+                "SELECT name FROM projects WHERE id = CAST(:pid AS uuid)"
+                " AND organization_id = CAST(:oid AS uuid)"
+            ).bindparams(pid=project_id, oid=org_id),
+        )
+    ).first()
+    if not name_row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Projet introuvable")
-    brain = MemoryService(session)
-    await brain.write_memory(
+    project_name = name_row[0]
+
+    await archive_project(
+        session,
         org_id=org_id,
-        type="episodic",
+        project_id=project_id,
+        deleted_by=user.get("full_name"),
+    )
+
+    deleted = await delete_project_cascade(session, org_id=org_id, project_id=project_id)
+    if not deleted:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Projet introuvable")
+
+    slug = user.get("org_slug") or "app"
+    await broadcast_org_activity(
+        session,
+        org_id=org_id,
+        actor_id=str(user["id"]),
+        module="projects",
+        action="deleted",
+        title="Projet supprimé",
+        body=f"Le projet « {project_name} » a été supprimé",
         entity_type="project",
         entity_id=project_id,
-        note=f"Projet supprimé: {project_id}",
-        source_module="projects",
-        source_id=project_id,
+        link_path=f"/{slug}/projects",
     )
     await session.commit()

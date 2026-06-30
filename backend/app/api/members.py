@@ -7,8 +7,9 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import require_role
+from app.auth.dependencies import get_current_user, require_role
 from app.db.session import get_db
+from app.db.sql_compat import is_sqlite
 from app.pagination import decode_cursor, paginate_response
 from app.trial import require_write_access
 
@@ -47,6 +48,48 @@ async def list_members(
         ).mappings().all()
     ]
     return paginate_response(rows, limit=limit, cursor_fields=["joined_at", "membership_id"])
+
+
+@router.get("/roster")
+async def member_roster(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    """Active org members for task assignment (all roles may read)."""
+    oid = str(user["organization_id"])
+    if is_sqlite():
+        rows = [
+            dict(r)
+            for r in (
+                await session.execute(
+                    text(
+                        "SELECT u.id, u.full_name, u.email, om.role"
+                        " FROM org_memberships om"
+                        " JOIN users u ON u.id = om.user_id"
+                        " WHERE om.organization_id = :oid AND om.is_active = 1"
+                        " ORDER BY u.full_name"
+                    ).bindparams(oid=oid),
+                )
+            ).mappings().all()
+        ]
+    else:
+        rows = [
+            dict(r)
+            for r in (
+                await session.execute(
+                    text(
+                        "SELECT u.id, u.full_name, u.email, om.role"
+                        " FROM org_memberships om"
+                        " JOIN users u ON u.id = om.user_id"
+                        " WHERE om.organization_id = CAST(:oid AS uuid) AND om.is_active = true"
+                        " ORDER BY u.full_name"
+                    ).bindparams(oid=oid),
+                )
+            ).mappings().all()
+        ]
+    for row in rows:
+        row["id"] = str(row["id"])
+    return {"items": rows}
 
 
 @router.patch("/{member_id}/role")

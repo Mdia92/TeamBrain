@@ -5,16 +5,16 @@ import { Mic, Trash2, Upload } from "lucide-react";
 import { apiClient, uploadFile, ApiRequestError } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { canEditContent, memberApprovalHint } from "@/app/lib/permissions";
-import { t } from "@/app/lib/i18n";
+import { useTranslation } from "@/app/lib/use-locale";
 import { cn } from "@/app/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeader } from "@/components/ui/page-header";
 import { CardSkeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { TbCard } from "@/components/ui/tb-card";
 import { DetailDrawer } from "@/components/ui/detail-drawer";
 import { DeleteResourceButton } from "@/components/delete-resource-button";
 import { useGsapStagger } from "@/hooks/use-gsap-stagger";
+import { useOrgRefresh } from "@/app/contexts/OrgSyncContext";
 
 type Meeting = {
   id: string;
@@ -71,6 +71,7 @@ function ParticipantStack({ title }: { title: string }) {
 
 export default function MeetingsPage() {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const canEdit = canEditContent(user);
   const [meetings, setMeetings] = useState<MeetingCard[]>([]);
@@ -106,6 +107,8 @@ export default function MeetingsPage() {
     await enrichMeetings(r.items);
     setLoading(false);
   }, [enrichMeetings]);
+
+  useOrgRefresh(() => void load());
 
   useEffect(() => {
     void load();
@@ -157,7 +160,7 @@ export default function MeetingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t("meetings")} description="Enregistrez et analysez vos réunions avec l'IA." />
+      <p className="text-xs text-slate-500 dark:text-slate-400">{t("meetingsPageDesc")}</p>
 
       {canEdit ? (
         <form onSubmit={handleUpload} className="tb-card p-6">

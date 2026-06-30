@@ -54,7 +54,7 @@ export function AskAiPopup({ orgSlug }: { orgSlug: string }) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-dropdown transition-transform hover:scale-105 md:bottom-6"
+          className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg transition-transform hover:scale-105 md:bottom-6"
           aria-label={t("askAssistantButton")}
         >
           <Bot className="h-6 w-6" />

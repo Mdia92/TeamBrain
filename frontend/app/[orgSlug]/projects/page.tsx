@@ -1,21 +1,21 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FolderKanban, Plus, Trash2 } from "lucide-react";
 import { apiClient, ApiRequestError } from "@/app/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { canCreateProject, canEditContent, isReadOnly, memberApprovalHint } from "@/app/lib/permissions";
-import { t } from "@/app/lib/i18n";
+import { useTranslation } from "@/app/lib/use-locale";
 import { useToast } from "@/components/ui/toast";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeader } from "@/components/ui/page-header";
 import { CardSkeleton } from "@/components/ui/skeleton";
 import { TbCard } from "@/components/ui/tb-card";
 import { DetailDrawer } from "@/components/ui/detail-drawer";
 import { DeleteResourceButton } from "@/components/delete-resource-button";
 import { useGsapStagger } from "@/hooks/use-gsap-stagger";
+import { useOrgRefresh, useOrgSync } from "@/app/contexts/OrgSyncContext";
 
 type Project = {
   id: string;
@@ -28,8 +28,10 @@ type Project = {
 export default function ProjectsPage() {
   const params = useParams();
   const orgSlug = params.orgSlug as string;
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { bumpLocal } = useOrgSync();
   const [projects, setProjects] = useState<Project[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [selected, setSelected] = useState<Project | null>(null);
@@ -41,15 +43,20 @@ export default function ProjectsPage() {
   const canCreate = canCreateProject(user);
   const canEdit = canEditContent(user);
 
-  const load = () =>
-    apiClient
-      .get<{ items: Project[] }>("/api/projects")
-      .then((r) => setProjects(r.items))
-      .finally(() => setLoading(false));
+  const load = useCallback(
+    () =>
+      apiClient
+        .get<{ items: Project[] }>("/api/projects")
+        .then((r) => setProjects(r.items))
+        .finally(() => setLoading(false)),
+    [],
+  );
+
+  useOrgRefresh(() => void load());
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   async function handleCreate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -107,20 +114,17 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={t("projects")}
-        description="Organisez votre travail par client et par livrable."
-        actions={
-          canCreate ? (
-            <button type="button" onClick={() => setShowForm(true)} className="tb-btn-primary h-10">
-              <Plus className="h-4 w-4" />
-              {t("newProject")}
-            </button>
-          ) : (
-            <span className="text-xs text-slate-500">{memberApprovalHint()}</span>
-          )
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-slate-500 dark:text-slate-400">{t("projectsPageDesc")}</p>
+        {canCreate ? (
+          <button type="button" onClick={() => setShowForm(true)} className="tb-btn-primary h-10">
+            <Plus className="h-4 w-4" />
+            {t("newProject")}
+          </button>
+        ) : (
+          <span className="text-xs text-slate-500">{memberApprovalHint()}</span>
+        )}
+      </div>
 
       {showForm && (
         <form onSubmit={handleCreate} className="tb-card animate-slide-up space-y-4 p-6">
@@ -179,6 +183,7 @@ export default function ProjectsPage() {
                     if (!window.confirm(`${t("deleteConfirm")} « ${p.name} » ?`)) return;
                     void apiClient.delete(`/api/projects/${p.id}`).then(() => {
                       toast(t("deleted"), "success");
+                      bumpLocal();
                       void load();
                     }).catch((err) => {
                       toast(err instanceof ApiRequestError ? err.message : t("deleteError"), "error");

@@ -1,54 +1,58 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/app/lib/api";
-import * as authApi from "@/app/lib/auth-api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { canManageOrg } from "@/app/lib/permissions";
+import { useTranslation } from "@/app/lib/use-locale";
+import type { I18nKey } from "@/app/lib/i18n";
 import { cn } from "@/app/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
-import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TeamInvitesSection } from "@/components/team-invites";
 import { PayDunyaCheckoutButton, PayDunyaStatusBadge, TrialUpgradePanel } from "@/components/paydunya-checkout";
 import { OrgPolicySettings } from "@/components/org-policy-settings";
 import { AutomationBuilder } from "@/components/automation-builder";
+import { SettingsGeneralPanel } from "@/components/settings/settings-general-panel";
 
-const ALL_TABS = [
-  { id: "general", label: "Général", adminOnly: false },
-  { id: "team", label: "Équipe", adminOnly: true },
-  { id: "modules", label: "Modules", adminOnly: true },
-  { id: "rules", label: "Règles", adminOnly: true },
-  { id: "automations", label: "Automatisations", adminOnly: true },
-  { id: "billing", label: "Facturation", adminOnly: false },
-] as const;
+const ALL_TABS: { id: string; labelKey: I18nKey; adminOnly: boolean }[] = [
+  { id: "general", labelKey: "settingsTabGeneral", adminOnly: false },
+  { id: "team", labelKey: "settingsTabTeam", adminOnly: true },
+  { id: "modules", labelKey: "settingsTabModules", adminOnly: true },
+  { id: "rules", labelKey: "settingsTabRules", adminOnly: true },
+  { id: "automations", labelKey: "settingsTabAutomations", adminOnly: true },
+  { id: "billing", labelKey: "settingsTabBilling", adminOnly: false },
+];
 
 type TabId = (typeof ALL_TABS)[number]["id"];
 
-const MODULE_LABELS: Record<string, string> = {
-  projects: "Projets",
-  "field-reports": "Rapports terrain",
-  meetings: "Réunions",
-  documents: "Documents",
-  calendar: "Calendrier",
-  messages: "Messages",
-  whatsapp: "WhatsApp",
+const MODULE_LABEL_KEYS: Record<string, I18nKey> = {
+  projects: "projects",
+  "field-reports": "fieldReports",
+  meetings: "meetings",
+  documents: "documents",
+  messages: "messages",
+  calendar: "calendar",
+  whatsapp: "whatsappModule",
 };
 
-const ROLE_OPTIONS = [
-  { value: "admin", label: "Admin" },
-  { value: "manager", label: "Manager" },
-  { value: "member", label: "Membre" },
-  { value: "field_agent", label: "Agent terrain" },
+const ROLE_OPTIONS: { value: string; labelKey: I18nKey }[] = [
+  { value: "admin", labelKey: "roleAdmin" },
+  { value: "manager", labelKey: "roleManager" },
+  { value: "member", labelKey: "roleMember" },
+  { value: "field_agent", labelKey: "roleFieldAgent" },
 ];
 
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
+  const { t } = useTranslation();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const orgSlug = user?.org_slug ?? "";
   const isAdmin = canManageOrg(user);
-  const tabs = useMemo(() => ALL_TABS.filter((t) => !t.adminOnly || isAdmin), [isAdmin]);
+  const tabs = useMemo(() => ALL_TABS.filter((tab) => !tab.adminOnly || isAdmin), [isAdmin]);
   const [tab, setTab] = useState<TabId>("general");
   const [billing, setBilling] = useState<Record<string, unknown> | null>(null);
   const [members, setMembers] = useState<{ id: string; full_name: string; email: string; role: string }[]>([]);
@@ -56,11 +60,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [savingModules, setSavingModules] = useState(false);
   const [paydunya, setPaydunya] = useState<{ configured: boolean; mode: string; tiers?: Record<string, { price_fcfa: number }> } | null>(null);
-  const [orgName, setOrgName] = useState("");
-  const [orgDescription, setOrgDescription] = useState("");
-  const [orgGoals, setOrgGoals] = useState("");
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [profileMessage, setProfileMessage] = useState("");
 
   useEffect(() => {
     if (user && !isAdmin) {
@@ -69,15 +68,17 @@ export default function SettingsPage() {
   }, [user, isAdmin, router]);
 
   useEffect(() => {
-    if (!tabs.some((t) => t.id === tab)) setTab("general");
+    const fromUrl = searchParams.get("tab");
+    if (fromUrl && tabs.some((x) => x.id === fromUrl)) setTab(fromUrl as TabId);
+  }, [searchParams, tabs]);
+
+  useEffect(() => {
+    if (!tabs.some((x) => x.id === tab)) setTab("general");
   }, [tabs, tab]);
 
   useEffect(() => {
     setModules((user?.settings?.modules as string[]) ?? []);
-    setOrgName(user?.org_name ?? "");
-    setOrgDescription(String(user?.settings?.org_description ?? ""));
-    setOrgGoals(String(user?.settings?.org_goals ?? ""));
-  }, [user?.settings, user?.org_name]);
+  }, [user?.settings]);
 
   useEffect(() => {
     Promise.all([
@@ -95,28 +96,16 @@ export default function SettingsPage() {
     void refreshUser();
   }, [refreshUser, isAdmin]);
 
+  function selectTab(id: TabId) {
+    setTab(id);
+    const base = `/${orgSlug}/settings`;
+    router.replace(id === "general" ? base : `${base}?tab=${id}`);
+  }
+
   async function updateMemberRole(memberId: string, role: string) {
     await apiClient.patch(`/api/members/${memberId}/role`, { role });
     const m = await apiClient.get<{ items: typeof members }>("/api/members");
     setMembers(m.items);
-  }
-
-  async function saveOrgProfile() {
-    setSavingProfile(true);
-    setProfileMessage("");
-    try {
-      await authApi.patchOrgSettings({
-        name: orgName.trim(),
-        org_description: orgDescription.trim(),
-        org_goals: orgGoals.trim(),
-      });
-      await refreshUser();
-      setProfileMessage("Profil enregistré — la mémoire organisationnelle a été mise à jour.");
-    } catch (e) {
-      setProfileMessage(e instanceof Error ? e.message : "Erreur");
-    } finally {
-      setSavingProfile(false);
-    }
   }
 
   async function toggleModule(id: string) {
@@ -134,27 +123,26 @@ export default function SettingsPage() {
     }
   }
 
+  const settings = user?.settings as Record<string, unknown> | undefined;
   const b = billing ?? user?.billing;
   const readOnly = b?.is_read_only === true;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader title="Paramètres" description="Gérez votre organisation, votre équipe et vos modules." />
-
+    <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
-        {tabs.map((t) => (
+        {tabs.map((x) => (
           <button
-            key={t.id}
+            key={x.id}
             type="button"
-            onClick={() => setTab(t.id)}
+            onClick={() => selectTab(x.id as TabId)}
             className={cn(
               "shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
-              tab === t.id
-                ? "border-primary text-primary"
+              tab === x.id
+                ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
                 : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300",
             )}
           >
-            {t.label}
+            {t(x.labelKey)}
           </button>
         ))}
       </div>
@@ -162,79 +150,29 @@ export default function SettingsPage() {
       {loading ? (
         <div className="space-y-4">
           <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-64 w-full" />
         </div>
       ) : (
         <>
           {tab === "general" && (
-            <section className="tb-card space-y-4 p-6">
-              <h2 className="font-semibold">Organisation</h2>
-              {isAdmin ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="tb-label">Nom</label>
-                    <input
-                      value={orgName}
-                      onChange={(e) => setOrgName(e.target.value)}
-                      className="tb-input"
-                    />
-                  </div>
-                  <div>
-                    <label className="tb-label">Mission / activité</label>
-                    <textarea
-                      value={orgDescription}
-                      onChange={(e) => setOrgDescription(e.target.value)}
-                      rows={3}
-                      className="tb-input min-h-[80px] resize-y"
-                    />
-                  </div>
-                  <div>
-                    <label className="tb-label">Objectifs</label>
-                    <textarea
-                      value={orgGoals}
-                      onChange={(e) => setOrgGoals(e.target.value)}
-                      rows={2}
-                      className="tb-input min-h-[60px] resize-y"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    disabled={savingProfile}
-                    onClick={() => void saveOrgProfile()}
-                    className="tb-btn-primary h-9 px-4 text-sm"
-                  >
-                    {savingProfile ? "Enregistrement…" : "Enregistrer le profil"}
-                  </button>
-                  {profileMessage && <p className="text-sm text-slate-600 dark:text-slate-400">{profileMessage}</p>}
-                </div>
-              ) : (
-                <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                  <div>
-                    <dt className="text-slate-500">Nom</dt>
-                    <dd className="font-medium">{user?.org_name}</dd>
-                  </div>
-                </dl>
-              )}
-              <dl className="grid gap-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2 dark:border-slate-800">
-                <div>
-                  <dt className="text-slate-500">URL interne</dt>
-                  <dd className="font-medium">{user?.org_slug}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">Votre rôle</dt>
-                  <dd className="font-medium capitalize">{user?.role}</dd>
-                </div>
-              </dl>
-            </section>
+            <SettingsGeneralPanel
+              orgSlug={orgSlug}
+              orgName={user?.org_name ?? ""}
+              orgDescription={String(settings?.org_description ?? "")}
+              orgSector={String(settings?.org_sector ?? "")}
+              orgLocation={String(settings?.org_location ?? "")}
+              isAdmin={isAdmin}
+              onSaved={async () => {
+                await refreshUser();
+              }}
+            />
           )}
 
           {tab === "team" && isAdmin && (
             <div className="space-y-6">
-              <section className="tb-card p-6">
-                <h2 className="font-semibold">Membres actifs</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Comptes ayant accepté l&apos;invitation et rejoint l&apos;équipe. Les invitations non confirmées sont listées ci-dessous.
-                </p>
+              <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-850">
+                <h2 className="font-semibold text-slate-900 dark:text-white">{t("settingsMembersActive")}</h2>
+                <p className="mt-1 text-sm text-slate-500">{t("settingsMembersHint")}</p>
                 <ul className="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
                   {members.map((m) => (
                     <li key={m.id} className="flex items-center gap-3 py-3">
@@ -249,15 +187,17 @@ export default function SettingsPage() {
                         className="rounded-input border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                       >
                         {ROLE_OPTIONS.map((r) => (
-                          <option key={r.value} value={r.value}>{r.label}</option>
+                          <option key={r.value} value={r.value}>
+                            {t(r.labelKey)}
+                          </option>
                         ))}
                       </select>
                     </li>
                   ))}
                 </ul>
               </section>
-              <section className="tb-card p-6">
-                <h2 className="font-semibold">Invitations en attente</h2>
+              <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-850">
+                <h2 className="font-semibold text-slate-900 dark:text-white">{t("settingsPendingInvites")}</h2>
                 <div className="mt-4">
                   <TeamInvitesSection />
                 </div>
@@ -266,22 +206,25 @@ export default function SettingsPage() {
           )}
 
           {tab === "modules" && isAdmin && (
-            <section className="tb-card p-6">
-              <h2 className="font-semibold">Modules actifs</h2>
-              <p className="mt-1 text-sm text-slate-500">Les modules désactivés sont masqués dans la navigation.</p>
+            <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-850">
+              <h2 className="font-semibold text-slate-900 dark:text-white">{t("settingsModulesTitle")}</h2>
+              <p className="mt-1 text-sm text-slate-500">{t("settingsModulesHint")}</p>
               <ul className="mt-4 space-y-3">
-                {Object.entries(MODULE_LABELS).map(([id, label]) => {
+                {Object.entries(MODULE_LABEL_KEYS).map(([id, labelKey]) => {
                   const on = modules.includes(id);
                   return (
-                    <li key={id} className="flex items-center justify-between rounded-input border border-slate-100 px-4 py-3 dark:border-slate-800">
-                      <span className="text-sm font-medium">{label}</span>
+                    <li
+                      key={id}
+                      className="flex items-center justify-between rounded-lg border border-slate-100 px-4 py-3 dark:border-slate-800"
+                    >
+                      <span className="text-sm font-medium">{t(labelKey)}</span>
                       <button
                         type="button"
                         disabled={savingModules}
                         onClick={() => void toggleModule(id)}
                         className={cn(
                           "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                          on ? "bg-primary" : "bg-slate-300 dark:bg-slate-600",
+                          on ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-600",
                         )}
                         aria-pressed={on}
                       >
@@ -300,8 +243,8 @@ export default function SettingsPage() {
           )}
 
           {tab === "rules" && isAdmin && (
-            <section className="tb-card p-6">
-              <h2 className="font-semibold">Règles organisationnelles</h2>
+            <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-850">
+              <h2 className="font-semibold text-slate-900 dark:text-white">{t("settingsRulesTitle")}</h2>
               <div className="mt-4">
                 <OrgPolicySettings />
               </div>
@@ -309,8 +252,8 @@ export default function SettingsPage() {
           )}
 
           {tab === "automations" && isAdmin && (
-            <section className="tb-card p-6">
-              <h2 className="font-semibold">Automatisations</h2>
+            <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-850">
+              <h2 className="font-semibold text-slate-900 dark:text-white">{t("settingsAutomationsTitle")}</h2>
               <div className="mt-4">
                 <AutomationBuilder />
               </div>
@@ -320,55 +263,51 @@ export default function SettingsPage() {
           {tab === "billing" && (
             <div className="space-y-6">
               {readOnly && <TrialUpgradePanel />}
-            <section className="tb-card space-y-6 p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="font-semibold">Facturation</h2>
-                {paydunya && <PayDunyaStatusBadge configured={paydunya.configured} mode={paydunya.mode} />}
-              </div>
-              <dl className="space-y-3 text-sm">
-                <div className="flex justify-between border-b border-slate-100 py-2 dark:border-slate-800">
-                  <dt className="text-slate-500">Forfait</dt>
-                  <dd className="font-medium">{String(b?.pricing_tier ?? "free_trial")}</dd>
+              <section className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-850">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="font-semibold text-slate-900 dark:text-white">{t("settingsBillingTitle")}</h2>
+                  {paydunya && <PayDunyaStatusBadge configured={paydunya.configured} mode={paydunya.mode} />}
                 </div>
-                {b?.trial_days_left != null && (
+                <dl className="space-y-3 text-sm">
                   <div className="flex justify-between border-b border-slate-100 py-2 dark:border-slate-800">
-                    <dt className="text-slate-500">Jours restants (essai)</dt>
-                    <dd className="font-medium">{String(b.trial_days_left)}</dd>
+                    <dt className="text-slate-500">{t("settingsPlan")}</dt>
+                    <dd className="font-medium">{String(b?.pricing_tier ?? "free_trial")}</dd>
+                  </div>
+                  {b?.trial_days_left != null && (
+                    <div className="flex justify-between border-b border-slate-100 py-2 dark:border-slate-800">
+                      <dt className="text-slate-500">{t("settingsTrialDays")}</dt>
+                      <dd className="font-medium">{String(b.trial_days_left)}</dd>
+                    </div>
+                  )}
+                  <div className="flex justify-between py-2">
+                    <dt className="text-slate-500">{t("settingsMode")}</dt>
+                    <dd className="font-medium">
+                      {b?.is_read_only ? t("settingsReadOnlyMode") : t("settingsActiveMode")}
+                    </dd>
+                  </div>
+                </dl>
+
+                {isAdmin && paydunya?.tiers && (
+                  <div className="space-y-3 border-t border-slate-100 pt-6 dark:border-slate-800">
+                    <h3 className="text-sm font-medium">{t("settingsUpgradePaid")}</h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(["starter", "pro"] as const).map((tier) => (
+                        <div key={tier} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                          <p className="font-medium capitalize">{tier}</p>
+                          <p className="text-lg font-semibold text-indigo-600 dark:text-indigo-400">
+                            {paydunya.tiers?.[tier]?.price_fcfa.toLocaleString("fr-FR")} FCFA / mois
+                          </p>
+                          <PayDunyaCheckoutButton tier={tier} className="mt-3" />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
-                <div className="flex justify-between py-2">
-                  <dt className="text-slate-500">Mode</dt>
-                  <dd className="font-medium">{b?.is_read_only ? "Lecture seule" : "Actif"}</dd>
-                </div>
-              </dl>
 
-              {isAdmin && paydunya?.tiers && (
-                <div className="space-y-3 border-t border-slate-100 pt-6 dark:border-slate-800">
-                  <h3 className="text-sm font-medium">Passer à un forfait payant</h3>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {(["starter", "pro"] as const).map((tier) => (
-                      <div key={tier} className="rounded-input border border-slate-200 p-4 dark:border-slate-700">
-                        <p className="font-medium capitalize">{tier}</p>
-                        <p className="text-lg font-semibold text-primary">
-                          {paydunya.tiers?.[tier]?.price_fcfa.toLocaleString("fr-FR")} FCFA / mois
-                        </p>
-                        <PayDunyaCheckoutButton tier={tier} className="mt-3" />
-                      </div>
-                    ))}
-                  </div>
-                  {!paydunya.configured && (
-                    <p className="text-xs text-slate-500">
-                      Configurez PAYDUNYA_API_KEY, PAYDUNYA_MASTER_KEY et PAYDUNYA_TOKEN dans backend/.env
-                      pour activer les paiements.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <Link href="/pricing" className="tb-btn-secondary inline-flex h-10">
-                Voir tous les forfaits
-              </Link>
-            </section>
+                <Link href="/pricing" className="tb-btn-secondary inline-flex h-10">
+                  {t("settingsViewPlans")}
+                </Link>
+              </section>
             </div>
           )}
         </>

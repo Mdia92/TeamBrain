@@ -15,7 +15,6 @@ import {
   type CalendarEventItem,
   type CalendarTaskItem,
 } from "@/components/calendar/calendar-month";
-import { PageHeader } from "@/components/ui/page-header";
 import { TbCard } from "@/components/ui/tb-card";
 import { DetailDrawer } from "@/components/ui/detail-drawer";
 import { useToast } from "@/components/ui/toast";
@@ -120,27 +119,24 @@ export default function CalendarPage() {
     });
     setShowForm(false);
     void load();
-    toast("Événement créé", "success");
+    toast(t("calendarEventCreated"), "success");
   }
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={t("calendar")}
-        description={`Vue mensuelle — événements, échéances de tâches et ${t("assistantCalendarInsights")}.`}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <a href={`${BASE_URL}/api/calendar/export.ics`} className="tb-btn-secondary" target="_blank" rel="noreferrer">
-              Export iCal
-            </a>
-            {canCreate && (
-              <button type="button" onClick={() => setShowForm(true)} className="tb-btn-primary h-10">
-                Nouvel événement
-              </button>
-            )}
-          </div>
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-slate-500 dark:text-slate-400">{t("calendarPageDesc")}</p>
+        <div className="flex flex-wrap gap-2">
+          <a href={`${BASE_URL}/api/calendar/export.ics`} className="tb-btn-secondary" target="_blank" rel="noreferrer">
+            Export iCal
+          </a>
+          {canCreate && (
+            <button type="button" onClick={() => setShowForm(true)} className="tb-btn-primary h-10">
+              {t("calendarNewEvent")}
+            </button>
+          )}
+        </div>
+      </div>
 
       {showForm && (
         <form onSubmit={handleCreate} className="tb-card animate-slide-up space-y-3 p-4">

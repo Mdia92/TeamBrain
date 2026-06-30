@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.llm_client import generate_text
 from app.agents.memory_service import MemoryService
-from app.auth.dependencies import get_current_user, require_role
+from app.auth.dependencies import get_current_user, require_org_admin, require_role
 from app.automation import run_automation_event
 from app.db.session import get_db
 from app.pagination import cursor_clause, paginate_response
@@ -27,6 +27,8 @@ from app.services.document_extract import (
 )
 from app.services.document_search import embed_document, search_documents_semantic
 from app.services.module_findings import ingest_document_findings
+from app.services.memory_archive import archive_document
+from app.services.org_activity import broadcast_org_activity
 from app.services.voice_notes import ingest_voice_note, read_upload_audio
 from app.storage.s3 import get_storage
 from app.storage.urls import storage_key_from_url
@@ -103,7 +105,8 @@ async def map_field_reports(
 @router.post("/field-report", status_code=status.HTTP_201_CREATED)
 async def create_field_report(
     body: FieldReportIn,
-    user: dict = Depends(require_write_access),
+    user: dict = Depends(require_org_admin),
+    _write: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     return await _insert_field_report(session, user, body)
@@ -167,6 +170,20 @@ async def _insert_field_report(session: AsyncSession, user: dict, body: FieldRep
             "location_name": body.location_name or "",
         },
     )
+    slug = user.get("org_slug") or "app"
+    await broadcast_org_activity(
+        session,
+        org_id=oid,
+        actor_id=str(user["id"]),
+        module="documents",
+        action="created",
+        title="Rapport terrain",
+        body=f"Nouveau rapport « {title} »",
+        entity_type="document",
+        entity_id=str(did),
+        link_path=f"/{slug}/documents",
+    )
+    await session.commit()
     return {"id": str(did), "ai_summary": summary}
 
 
@@ -176,7 +193,8 @@ async def upload_document(
     title: str = Form(...),
     project_id: str | None = Form(None),
     doc_type: str | None = Form(None),
-    user: dict = Depends(require_write_access),
+    user: dict = Depends(require_org_admin),
+    _write: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     doc_id = uuid.uuid4()
@@ -284,6 +302,20 @@ async def upload_document(
             "uploaded_by": str(user["id"]),
         },
     )
+    slug = user.get("org_slug") or "app"
+    await broadcast_org_activity(
+        session,
+        org_id=oid,
+        actor_id=str(user["id"]),
+        module="documents",
+        action="created",
+        title="Nouveau document",
+        body=f"Document « {title} » ajouté",
+        entity_type="document",
+        entity_id=str(doc_id),
+        link_path=f"/{slug}/documents",
+    )
+    await session.commit()
 
     return {"id": str(doc_id), "has_file": True, "doc_type": resolved_type, "ai_summary": summary}
 
@@ -362,7 +394,8 @@ async def upload_voice_note(
     audio: UploadFile = File(...),
     title: str = Form("Note vocale"),
     project_id: str | None = Form(None),
-    user: dict = Depends(require_write_access),
+    user: dict = Depends(require_org_admin),
+    _write: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     content, filename, content_type = await read_upload_audio(audio)
@@ -380,10 +413,20 @@ async def upload_voice_note(
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     doc_id: str,
-    user: dict = Depends(require_role("owner", "admin", "manager")),
+    user: dict = Depends(require_org_admin),
     session: AsyncSession = Depends(get_db),
 ) -> None:
     oid = str(user["organization_id"])
+    archived = await archive_document(
+        session,
+        org_id=oid,
+        doc_id=doc_id,
+        deleted_by=user.get("full_name"),
+        delete_file=True,
+    )
+    if not archived:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Document introuvable")
+
     result = await session.execute(
         text(
             "DELETE FROM documents WHERE id = CAST(:did AS uuid) AND organization_id = CAST(:oid AS uuid)"
@@ -393,15 +436,18 @@ async def delete_document(
     row = result.first()
     if not row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document introuvable")
-    brain = MemoryService(session)
-    await brain.write_memory(
+    slug = user.get("org_slug") or "app"
+    await broadcast_org_activity(
+        session,
         org_id=oid,
-        type="episodic",
+        actor_id=str(user["id"]),
+        module="documents",
+        action="deleted",
+        title="Document supprimé",
+        body=f"« {row[0]} » a été supprimé",
         entity_type="document",
         entity_id=doc_id,
-        note=f"Document supprimé: {row[0]}",
-        source_module="documents",
-        source_id=doc_id,
+        link_path=f"/{slug}/documents",
     )
     await session.commit()
 
@@ -409,7 +455,8 @@ async def delete_document(
 @router.post("/{doc_id}/summarize")
 async def summarize_document(
     doc_id: str,
-    user: dict = Depends(require_write_access),
+    user: dict = Depends(require_org_admin),
+    _write: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     row = (

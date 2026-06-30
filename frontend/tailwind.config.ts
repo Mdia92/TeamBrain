@@ -11,11 +11,16 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       colors: {
         primary: {
           DEFAULT: "#4F46E5",
           foreground: "#FFFFFF",
+        },
+        slate: {
+          750: "#2d3748",
+          850: "#1a2332",
         },
         accent: {
           DEFAULT: "#F59E0B",
@@ -35,6 +40,7 @@ const config: Config = {
         modal: "12px",
       },
       boxShadow: {
+        xs: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
         card: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
         dropdown: "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
       },

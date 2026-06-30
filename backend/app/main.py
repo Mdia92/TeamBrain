@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.api import (
+    activity,
     assistant,
     auth,
     automations,
@@ -83,6 +84,7 @@ app.include_router(members.router)
 app.include_router(invites.router)
 app.include_router(memory.router)
 app.include_router(notifications.router)
+app.include_router(activity.router)
 app.include_router(pending_actions.router)
 app.include_router(org_intel.router)
 app.include_router(organizations.router)

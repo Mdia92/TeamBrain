@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { AppShell } from "@/components/app-shell";
@@ -47,8 +47,16 @@ export function OrgLayoutClient({
   }
 
   return (
-    <AppShell orgSlug={orgSlug}>
-      <div ref={pageRef}>{children}</div>
-    </AppShell>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-white p-6 dark:bg-slate-950">
+          <DashboardSkeleton />
+        </div>
+      }
+    >
+      <AppShell orgSlug={orgSlug}>
+        <div ref={pageRef}>{children}</div>
+      </AppShell>
+    </Suspense>
   );
 }

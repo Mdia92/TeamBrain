@@ -79,7 +79,6 @@ async def seed() -> None:
             "sync_queue",
             "memory_metadata",
             "daily_status",
-            "field_reports",
             "meetings",
             "events",
             "documents",
@@ -213,15 +212,19 @@ async def seed() -> None:
         for i, (name, _, _, uid) in enumerate(USERS[4:6]):
             await session.execute(
                 text(
-                    "INSERT INTO field_reports (id, organization_id, project_id, submitted_by,"
-                    " mission_date, location_name, latitude, longitude, description, ai_summary)"
-                    " VALUES (gen_random_uuid(), CAST(:oid AS uuid), CAST(:pid AS uuid),"
-                    " CAST(:uid AS uuid), CURRENT_DATE - :days, :loc, :lat, :lng, :desc, :summary)"
+                    "INSERT INTO documents (id, organization_id, project_id, title, file_url,"
+                    " content_type, file_size, ocr_text, ai_summary, uploaded_by, doc_type,"
+                    " gps_latitude, gps_longitude, location_name, mission_date, submitted_by)"
+                    " VALUES (gen_random_uuid(), CAST(:oid AS uuid), CAST(:pid AS uuid), :title,"
+                    " :url, 'text/plain', 0, :desc, :summary, CAST(:uid AS uuid), 'field_report',"
+                    " :lat, :lng, :loc, CURRENT_DATE - :days, CAST(:uid AS uuid))"
                 ).bindparams(
                     oid=str(ORG_ID),
                     pid=PROJECTS[i][2],
                     uid=uid,
                     days=i * 3,
+                    title=f"Rapport terrain {['Matam', 'Tambacounda'][i % 2]}",
+                    url=f"inline://field-report/timtimol-{i}",
                     loc=["Matam", "Tambacounda"][i % 2],
                     lat=15.6559 + i * 0.1,
                     lng=-13.2554 - i * 0.1,

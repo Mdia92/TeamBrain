@@ -113,3 +113,6 @@ def require_role(*roles: str):
         return user
 
     return _dep
+
+
+require_org_admin = require_role("owner", "admin")

@@ -14,7 +14,6 @@ import {
 } from "@/app/lib/offline-sync";
 import { cn } from "@/app/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeader } from "@/components/ui/page-header";
 import { CardSkeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { TbCard } from "@/components/ui/tb-card";
@@ -22,6 +21,7 @@ import { DetailDrawer } from "@/components/ui/detail-drawer";
 import { DeleteResourceButton } from "@/components/delete-resource-button";
 import { VoiceNoteCapture } from "@/components/voice-note-capture";
 import { useGsapStagger } from "@/hooks/use-gsap-stagger";
+import { useOrgRefresh } from "@/app/contexts/OrgSyncContext";
 
 type Doc = {
   id: string;
@@ -37,13 +37,13 @@ type Doc = {
   mission_date?: string | null;
 };
 
-const TABS = [
-  { id: "all", label: "Tous" },
-  { id: "document", label: "Documents" },
-  { id: "field_report", label: "Rapports terrain" },
-  { id: "meeting_notes", label: "Notes de réunion" },
-  { id: "voice_note", label: "Notes vocales" },
-] as const;
+const TAB_KEYS = [
+  { id: "all", key: "docsTabAll" as const },
+  { id: "document", key: "docsTabDocument" as const },
+  { id: "field_report", key: "docsTabFieldReport" as const },
+  { id: "meeting_notes", key: "docsTabMeetingNotes" as const },
+  { id: "voice_note", key: "docsTabVoiceNote" as const },
+];
 
 const ACCEPT_FILES =
   ".pdf,.doc,.docx,.xlsx,.xls,.csv,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp,.m4a,.mp3,.ogg,.wav,.webm";
@@ -89,6 +89,8 @@ export default function DocumentsPage() {
     setLoading(false);
   }, [tab]);
 
+  useOrgRefresh(() => void load());
+
   useEffect(() => {
     setLoading(true);
     void load().catch(() => setLoading(false));
@@ -97,7 +99,7 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("tab");
-    if (q && TABS.some((t) => t.id === q)) setTab(q);
+    if (q && TAB_KEYS.some((x) => x.id === q)) setTab(q);
   }, []);
 
   useEffect(() => {
@@ -217,7 +219,7 @@ export default function DocumentsPage() {
     if (dataUrl) {
       setPhotoData(dataUrl);
       setPhotoPreview(dataUrl);
-      toast("Photo attachée", "success");
+      toast(t("docsPhotoAttached"), "success");
     }
   }
 
@@ -228,33 +230,30 @@ export default function DocumentsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={t("documents")}
-        description="Documents, rapports terrain, notes — un seul module unifié."
-        actions={
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                online
-                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                  : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-              )}
-            >
-              {online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-              {online ? t("online") : t("offline")}
-            </span>
-            {pending > 0 && (
-              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
-                {pending} en attente
-              </span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-slate-500 dark:text-slate-400">{t("docsPageDesc")}</p>
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+              online
+                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
             )}
-          </div>
-        }
-      />
+          >
+            {online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+            {online ? t("online") : t("offline")}
+          </span>
+          {pending > 0 && (
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+              {pending} {t("docsPendingSync")}
+            </span>
+          )}
+        </div>
+      </div>
 
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2 dark:border-slate-800">
-        {TABS.map(({ id, label }) => (
+        {TAB_KEYS.map(({ id, key }) => (
           <button
             key={id}
             type="button"
@@ -269,7 +268,7 @@ export default function DocumentsPage() {
                 : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
             )}
           >
-            {label}
+            {t(key)}
           </button>
         ))}
       </div>

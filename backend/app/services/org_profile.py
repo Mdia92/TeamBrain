@@ -27,6 +27,8 @@ def build_org_profile_note(*, name: str, settings: dict[str, Any]) -> str:
     modules = ", ".join(settings.get("modules") or [])
     description = (settings.get("org_description") or "").strip()
     goals = (settings.get("org_goals") or "").strip()
+    sector = (settings.get("org_sector") or "").strip()
+    location = (settings.get("org_location") or "").strip()
 
     lines = [
         "Profil organisationnel (connaissance fondamentale — à préserver et renforcer) :",
@@ -39,6 +41,10 @@ def build_org_profile_note(*, name: str, settings: dict[str, Any]) -> str:
         lines.append(f"Modules actifs : {modules}")
     if description:
         lines.append(f"Mission / activité : {description}")
+    if sector:
+        lines.append(f"Secteur d'activité : {sector}")
+    if location:
+        lines.append(f"Siège / localisation : {location}")
     if goals:
         lines.append(f"Objectifs : {goals}")
     lines.append(

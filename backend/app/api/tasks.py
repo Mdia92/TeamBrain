@@ -11,18 +11,25 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.memory_service import MemoryService
-from app.auth.dependencies import get_current_user, require_role
+from app.auth.dependencies import get_current_user, require_org_admin, require_role
+from app.auth.roles import ADMIN_ROLES
 from app.automation import run_automation_event
 from app.db.session import get_db
 from app.events.worker import trigger_on_task_change
 from app.pagination import decode_cursor, encode_cursor
 from app.services.module_findings import ingest_task_event
+from app.services.memory_archive import archive_task
+from app.services.org_activity import broadcast_org_activity
 from app.services.task_dependencies import dependency_would_cycle, unresolved_dependency_titles
 from app.trial import require_write_access
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
-MANAGER_ROLES = frozenset({"owner", "admin", "manager"})
+MANAGER_ROLES = ADMIN_ROLES
+
+
+class TaskAssignIn(BaseModel):
+    assignee_id: str | None = None
 
 
 class TaskIn(BaseModel):
@@ -100,7 +107,8 @@ async def list_tasks(
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_task(
     body: TaskIn,
-    user: dict = Depends(require_write_access),
+    user: dict = Depends(require_org_admin),
+    _write: dict = Depends(require_write_access),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     tid = uuid.uuid4()
@@ -156,6 +164,22 @@ async def create_task(
             "created_by": str(user["id"]),
         },
     )
+    slug = user.get("org_slug") or "app"
+    extra = [body.assignee_id] if body.assignee_id else None
+    await broadcast_org_activity(
+        session,
+        org_id=str(user["organization_id"]),
+        actor_id=str(user["id"]),
+        module="tasks",
+        action="created",
+        title="Nouvelle tâche",
+        body=f"Tâche « {body.title} » créée",
+        entity_type="task",
+        entity_id=str(tid),
+        link_path=f"/{slug}/tasks",
+        extra_user_ids=extra,
+    )
+    await session.commit()
     return {"id": str(tid)}
 
 
@@ -175,7 +199,7 @@ async def _get_task_org(session: AsyncSession, task_id: str, org_id: str) -> dic
 async def add_task_dependency(
     task_id: str,
     body: TaskDependencyIn,
-    user: dict = Depends(require_role("owner", "admin", "manager")),
+    user: dict = Depends(require_org_admin),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     org_id = str(user["organization_id"])
@@ -216,7 +240,7 @@ async def add_task_dependency(
 async def remove_task_dependency(
     task_id: str,
     depends_on_task_id: str,
-    user: dict = Depends(require_role("owner", "admin", "manager")),
+    user: dict = Depends(require_org_admin),
     session: AsyncSession = Depends(get_db),
 ) -> None:
     result = await session.execute(
@@ -237,7 +261,7 @@ async def remove_task_dependency(
 async def update_task_dates(
     task_id: str,
     body: TaskDatesIn,
-    user: dict = Depends(require_role("owner", "admin", "manager")),
+    user: dict = Depends(require_org_admin),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
     if body.due_date < body.start_date:
@@ -344,20 +368,115 @@ async def update_task_status(
     )
     await session.commit()
     await trigger_on_task_change(session, org_id)
+    slug = user.get("org_slug") or "app"
+    await broadcast_org_activity(
+        session,
+        org_id=org_id,
+        actor_id=str(user["id"]),
+        module="tasks",
+        action="status_changed",
+        title="Tâche mise à jour",
+        body=f"« {row['title']} » → {body.status}",
+        entity_type="task",
+        entity_id=task_id,
+        link_path=f"/{slug}/tasks",
+        extra_user_ids=[str(row["assignee_id"])] if row.get("assignee_id") else None,
+    )
+    await session.commit()
     return {"id": task_id, "status": body.status}
+
+
+async def _verify_assignee_in_org(session: AsyncSession, org_id: str, assignee_id: str) -> None:
+    row = (
+        await session.execute(
+            text(
+                "SELECT 1 FROM org_memberships"
+                " WHERE organization_id = CAST(:oid AS uuid)"
+                " AND user_id = CAST(:uid AS uuid) AND is_active = true"
+            ).bindparams(oid=org_id, uid=assignee_id),
+        )
+    ).first()
+    if not row:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Membre introuvable dans l'équipe")
+
+
+@router.patch("/{task_id}/assign")
+async def assign_task(
+    task_id: str,
+    body: TaskAssignIn,
+    user: dict = Depends(require_org_admin),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    org_id = str(user["organization_id"])
+    if body.assignee_id:
+        await _verify_assignee_in_org(session, org_id, body.assignee_id)
+
+    if body.assignee_id:
+        aid_sql = "assignee_id = CAST(:aid AS uuid)"
+        params = {"tid": task_id, "oid": org_id, "aid": body.assignee_id}
+    else:
+        aid_sql = "assignee_id = NULL"
+        params = {"tid": task_id, "oid": org_id}
+
+    result = await session.execute(
+        text(
+            f"UPDATE tasks SET {aid_sql}, updated_at = now()"
+            " WHERE id = CAST(:tid AS uuid) AND organization_id = CAST(:oid AS uuid)"
+            " RETURNING id, title"
+        ).bindparams(**params),
+    )
+    row = result.mappings().first()
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tâche introuvable")
+
+    assignee_name = None
+    if body.assignee_id:
+        assignee_name = (
+            await session.execute(
+                text("SELECT full_name FROM users WHERE id = CAST(:uid AS uuid)").bindparams(
+                    uid=body.assignee_id,
+                ),
+            )
+        ).scalar()
+
+    slug = user.get("org_slug") or "app"
+    await broadcast_org_activity(
+        session,
+        org_id=org_id,
+        actor_id=str(user["id"]),
+        module="tasks",
+        action="assigned",
+        title="Tâche assignée",
+        body=(
+            f"« {row['title']} » assignée à {assignee_name}"
+            if assignee_name
+            else f"« {row['title']} » — assignation retirée"
+        ),
+        entity_type="task",
+        entity_id=task_id,
+        link_path=f"/{slug}/tasks",
+        extra_user_ids=[body.assignee_id] if body.assignee_id else None,
+    )
+    await session.commit()
+    return {"id": task_id, "assignee_id": body.assignee_id, "assignee_name": assignee_name}
 
 
 @router.patch("/{task_id}")
 async def update_task(
     task_id: str,
     body: TaskIn,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_org_admin),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
+    if body.assignee_id:
+        await _verify_assignee_in_org(session, str(user["organization_id"]), body.assignee_id)
+    aid_sql = "assignee_id = CAST(:aid AS uuid)" if body.assignee_id else "assignee_id = NULL"
+    pid_sql = "project_id = CAST(:pid AS uuid)" if body.project_id else "project_id = NULL"
     await session.execute(
         text(
-            "UPDATE tasks SET title = :title, description = :desc, assignee_id = CAST(:aid AS uuid),"
-            " start_date = :start, due_date = :due, priority = :priority, status = :status, updated_at = now()"
+            f"UPDATE tasks SET title = :title, description = :desc, {aid_sql},"
+            f" {pid_sql}, start_date = :start, due_date = :due, priority = :priority,"
+            " status = :status, updated_at = now()"
             " WHERE id = CAST(:tid AS uuid) AND organization_id = CAST(:oid AS uuid)"
         ).bindparams(
             tid=task_id,
@@ -365,6 +484,7 @@ async def update_task(
             title=body.title,
             desc=body.description,
             aid=body.assignee_id,
+            pid=body.project_id,
             start=body.start_date,
             due=body.due_date,
             priority=body.priority,
@@ -378,10 +498,35 @@ async def update_task(
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
     task_id: str,
-    user: dict = Depends(require_role("owner", "admin", "manager")),
+    user: dict = Depends(require_org_admin),
     session: AsyncSession = Depends(get_db),
 ) -> None:
     org_id = str(user["organization_id"])
+    title_row = (
+        await session.execute(
+            text(
+                "SELECT title FROM tasks WHERE id = CAST(:tid AS uuid)"
+                " AND organization_id = CAST(:oid AS uuid)"
+            ).bindparams(tid=task_id, oid=org_id),
+        )
+    ).first()
+    if not title_row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tâche introuvable")
+    task_title = title_row[0]
+
+    await archive_task(session, org_id=org_id, task_id=task_id)
+
+    await session.execute(
+        text(
+            "DELETE FROM task_dependencies WHERE organization_id = CAST(:oid AS uuid)"
+            " AND (task_id = CAST(:tid AS uuid) OR depends_on_task_id = CAST(:tid AS uuid))"
+        ).bindparams(tid=task_id, oid=org_id),
+    )
+    await session.execute(
+        text("DELETE FROM meeting_action_items WHERE task_id = CAST(:tid AS uuid)").bindparams(
+            tid=task_id,
+        ),
+    )
     result = await session.execute(
         text(
             "DELETE FROM tasks WHERE id = CAST(:tid AS uuid) AND organization_id = CAST(:oid AS uuid)"
@@ -390,14 +535,17 @@ async def delete_task(
     )
     if not result.first():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Tâche introuvable")
-    brain = MemoryService(session)
-    await brain.write_memory(
+    slug = user.get("org_slug") or "app"
+    await broadcast_org_activity(
+        session,
         org_id=org_id,
-        type="episodic",
+        actor_id=str(user["id"]),
+        module="tasks",
+        action="deleted",
+        title="Tâche supprimée",
+        body=f"La tâche « {task_title} » a été supprimée",
         entity_type="task",
         entity_id=task_id,
-        note=f"Tâche supprimée: {task_id}",
-        source_module="tasks",
-        source_id=task_id,
+        link_path=f"/{slug}/tasks",
     )
     await session.commit()

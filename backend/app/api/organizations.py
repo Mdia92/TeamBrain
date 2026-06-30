@@ -25,6 +25,8 @@ class SettingsPatchIn(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     org_description: str | None = Field(default=None, max_length=2000)
     org_goals: str | None = Field(default=None, max_length=1000)
+    org_sector: str | None = Field(default=None, max_length=200)
+    org_location: str | None = Field(default=None, max_length=200)
     modules: list[str] | None = None
 
 
@@ -95,6 +97,10 @@ async def patch_settings(
         settings["org_description"] = body.org_description.strip()
     if body.org_goals is not None:
         settings["org_goals"] = body.org_goals.strip()
+    if body.org_sector is not None:
+        settings["org_sector"] = body.org_sector.strip()
+    if body.org_location is not None:
+        settings["org_location"] = body.org_location.strip()
     if body.modules is not None:
         settings["modules"] = body.modules
 
@@ -119,7 +125,7 @@ async def patch_settings(
     )
     await session.commit()
 
-    if body.name is not None or body.org_description is not None or body.org_goals is not None:
+    if body.name is not None or body.org_description is not None or body.org_goals is not None or body.org_sector is not None or body.org_location is not None:
         await notify_admin(
             event="org_profile_update",
             subject="Profil organisation mis à jour",
